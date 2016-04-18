@@ -1,0 +1,22 @@
+{
+	"MODULES" : {
+		"service.auth.Auth" : "config/auth.json"
+	},
+
+    "HANDLERS" : {
+		"PUT" : {
+		    "/addtoken" : { "method" : "service.auth.Auth.addtoken",
+								"parameters" : ["name"] }
+		},
+		"GET" : {
+		    "/checktoken" : { "method" : "service.auth.Auth.checktoken", 
+								"parameters" : ["name"] }
+		}
+    },
+
+    "logging" : {
+	"dir" : "logging/",
+	"format" : "%(asctime)s :: %(name)s :: %(levelname)s :: %(message)s"
+    }
+}
+
