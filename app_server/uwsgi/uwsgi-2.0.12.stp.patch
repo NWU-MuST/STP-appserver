@@ -1,0 +1,9 @@
+diff -Naur /home/ntkleynhans/workspace/dac/2016/uwsgi/uwsgi-2.0.12/buildconf/python.ini /home/ntkleynhans/workspace/dac/2016/uwsgi/uwsgi-2.0.12a/buildconf/python.ini
+--- /home/ntkleynhans/workspace/dac/2016/uwsgi/uwsgi-2.0.12/buildconf/python.ini	1970-01-01 02:00:00.000000000 +0200
++++ /home/ntkleynhans/workspace/dac/2016/uwsgi/uwsgi-2.0.12a/buildconf/python.ini	2016-04-18 15:20:54.416008670 +0200
+@@ -0,0 +1,5 @@
++[uwsgi]
++inherit = base
++plugins = python, ping, cache, http, fastrouter
++plugin_dir = plugins
++embedded_plugins = null
