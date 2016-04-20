@@ -1,0 +1,18 @@
+--- 000-default.conf	2016-04-20 09:05:32.519959387 +0200
++++ 000-default.conf_uwsgi	2016-04-20 09:07:13.091959705 +0200
+@@ -26,6 +26,14 @@
+ 	# following line enables the CGI configuration for this host only
+ 	# after it has been globally disabled with "a2disconf".
+ 	#Include conf-available/serve-cgi-bin.conf
+-</VirtualHost>
+ 
++	ProxyRequests off
++        <Location /wsgi>
++                Order deny,allow
++                Allow from all
++                ProxyPass uwsgi://127.0.0.1:9090/
++                ProxyPassReverse uwsgi://127.0.0.1:9090/
++        </Location>
++
++</VirtualHost>
+ # vim: syntax=apache ts=4 sw=4 sts=4 sr noet
