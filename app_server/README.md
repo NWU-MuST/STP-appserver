@@ -8,6 +8,17 @@ i) Configure Apache to forward requests
 
 ii) Compile UWSGI python module and binary
 
+	- download uwsgi-2.0.12.tar.gz
+	- extract
+	- apply patch uwsgi-2.0.12.stp.patch
+		$ patch -p7 < uwsgi-2.0.12.stp.patch
+	- build binary and python module
+		$ sudo apt-get install libpcre3 libpcre3-dev
+		$ make
+		$ python uwsgiconfig.py --build buildconf/python.ini
+	
+
+
 Start application server:
 -------------------------
 
