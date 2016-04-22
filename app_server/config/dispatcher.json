@@ -1,24 +1,19 @@
 {
     "MODULES" : {
-	"service.auth.Auth" : "config/auth.json",
-	"service.admin.Admin" : "config/admin.json"
+	"service.proj.Projects" : "config/projects.json"
     },
 
     "HANDLERS" : {
 	"PUT" : {
-	    "/addtoken" : { "method" : "service.auth.Auth.addtoken",
-			    "parameters" : ["name"] },
-	    "/adduser" : { "method" : "service.admin.Admin.adduser",
-			    "parameters" : ["name"] }
+	    "projects/adduser" : { "method" : "service.projects.Projects.adduser",
+				   "parameters" : ["name"] }
 	},
 	"GET" : {
-	    "/checktoken" : { "method" : "service.auth.Auth.checktoken", 
-			      "parameters" : ["name"] }
 	}
     },
 
     "logging" : {
-	"dir" : "logging/",
+	"dir" : "/mnt/stp/",
 	"format" : "%(asctime)s :: %(name)s :: %(levelname)s :: %(message)s"
     }
 }

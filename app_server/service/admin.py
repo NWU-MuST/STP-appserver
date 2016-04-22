@@ -2,27 +2,45 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals, division, print_function #Py2
 
-import os
-import json
-
 try:
     from sqlite3 import dbapi2 as sqlite
 except ImportError:
     from pysqlite2 import dbapi2 as sqlite
 
-#DEMIT: Here or in Admin config file?
-AUTHDB_FILE = os.path.join(os.getenv("STP_AUTHDB_DIR"), "auth.db")
+from auth import Auth
+from exceptions import BadRequestError, ConflictError
 
-class Admin:
+class Admin(Auth):
     """Implements all functions related to updating user information in
        the auth database.
     """
-    def __init__(self, config_file):
-        with open(config_file) as infh:
-            self._config = json.loads(infh.read())
 
     def adduser(self, request):
-        with sqlite.connect(AUTHDB_FILE) as db_conn:
+        if not set(request.keys()) >= {"username", "password", "name", "surname", "email"}:
+            raise BadRequestError
+        salt = bcrypt.gensalt()
+        pwhash = bcrypt.hashpw(request["password"], salt)
+        try:
+            with sqlite.connect(self._config["authdb_file"]) as db_conn:
+                db_curs = db_conn.cursor()
+                db_curs.execute("INSERT INTO users (username, pwhash, salt, name, surname, email)", (request["username"],
+                                                                                                     pwhash,
+                                                                                                     salt,
+                                                                                                     request["name"],
+                                                                                                     request["surname"],
+                                                                                                     request["email"]))
+                db_conn.commit()
+        except sqlite.IntegrityError as e:
+            raise ConflictError(e)
+        except KeyError as e:
+            raise BadRequestError(e)
+        return "User added"
+
+    def deluser(self, request):
+        if not set(request.keys()) >= {"username"}:
+            raise BadRequestError
+        with sqlite.connect(self._config["authdb_file"]) as db_conn:
             db_curs = db_conn.cursor()
-            db_curs.execute("INSERT INTO users (name, role_admin) VALUES (?,?)", (request['name'], 0))
+            db_curs.execute("DELETE FROM users WHERE username='?'", request["username"])
             db_conn.commit()
+        

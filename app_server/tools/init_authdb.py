@@ -10,22 +10,26 @@ __email__ = "dvn.demitasse@gmail.com"
 
 import os
 import argparse
-
 try:
     from sqlite3 import dbapi2 as sqlite
 except ImportError:
-    from pysqlite2 import dbapi2 as sqlite
+    from pysqlite2 import dbapi2 as sqlite #for old Python versions
 
-DEF_OUTDIR = os.getenv("STP_AUTHDB_DIR")
+import bcrypt #Ubuntu/Debian: apt-get install python-bcrypt
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--outdir', metavar='OUTDIR', type=str, dest="outdir", default=DEF_OUTDIR, help="")
+    parser.add_argument('outfn', metavar='OUTFN', type=str, help="Output DB filename.")
+    parser.add_argument('rootpass', metavar='ROOTPASS', type=str, help="Password for default user 'root'.")
     args = parser.parse_args()
-    outdir = args.outdir
+    outfn = args.outfn
     
-    with sqlite.connect(os.path.join(outdir, "auth.db")) as db_conn:
+    salt = bcrypt.gensalt()
+    pwhash = bcrypt.hashpw(args.rootpass, salt)
+    
+    with sqlite.connect(outfn) as db_conn:
         db_curs = db_conn.cursor()
-        db_curs.execute("CREATE TABLE users ( name VARCHAR(20) PRIMARY KEY, role_admin INTEGER )")
-        db_curs.execute("CREATE TABLE tokens ( token VARCHAR(20) PRIMARY KEY, username VARCHAR(20) )")
+        db_curs.execute("CREATE TABLE users ( username VARCHAR(30) PRIMARY KEY, pwhash VARCHAR(60), salt VARCHAR(30), name VARCHAR(30), surname VARCHAR(30), email VARCHAR(50) )")
+        db_curs.execute("INSERT INTO users ( username, pwhash, salt, name, surname, email ) VALUES (?,?,?,?,?,?)", ('root', pwhash, salt, '', '', ''))
+        db_curs.execute("CREATE TABLE tokens ( token VARCHAR(20) PRIMARY KEY, username VARCHAR(20), expiry TIMESTAMP)")
         db_conn.commit()

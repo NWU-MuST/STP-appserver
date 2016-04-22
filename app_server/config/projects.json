@@ -1,0 +1,3 @@
+{ "authdb_file": "/mnt/stp/projects_auth.db",
+  "token_lifetime": 31536000
+}

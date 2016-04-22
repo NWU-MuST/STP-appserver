@@ -5,7 +5,7 @@ MAINTAINER Daniel van Niekerk <dvn.demitasse@gmail.com>
 LABEL Description="Basic STP platform served over HTTP using Apache"
 
 #Install standard tools from Ubuntu repo
-RUN apt-get update && apt-get install -y apache2 libapache2-mod-proxy-uwsgi uwsgi uwsgi-plugin-python patch python
+RUN apt-get update && apt-get install -y apache2 libapache2-mod-proxy-uwsgi uwsgi uwsgi-plugin-python patch python python-bcrypt
 
 #Configure Apache to forward requests (uWSGI)
 COPY stp/install/* /etc/apache2/sites-available/
@@ -15,13 +15,11 @@ RUN a2enmod proxy
 #Setup user and source code for platform
 RUN useradd -ms /bin/bash dac
 ENV HOME=/home/dac
-ENV STP=/mnt/stp
+ENV STP=/mnt/stp    #Should correspond to definitions in `app_server/config/*`
 WORKDIR $HOME
 
 #Install application server
 COPY stp $HOME/source/stp/
-ENV STP_AUTHDB_DIR=$STP
-ENV STP_LOG_DIR=$STP
 RUN chown -R dac:dac source
 
 #Run application server
