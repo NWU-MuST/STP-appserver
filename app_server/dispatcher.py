@@ -118,9 +118,7 @@ class Dispatch:
 
     def put(self, env):
         uri = env['PATH_INFO']
-        print(self._routing["PUT"])
         if uri not in self._routing['PUT']:
-            print("DEMIT!!!!!!!!!!!!!")
             return '405 Method Not Allowed', json.dumps({'message' : 'PUT does not support: %s' % uri})
             
         try:
