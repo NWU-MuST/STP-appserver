@@ -1,12 +1,23 @@
 {
     "MODULES" : {
-	"service.proj.Projects" : "config/projects.json"
+	"service.projects.Projects" : "config/projects.json",
+	"service.projects.Admin" : "config/projects_admin.json"
     },
 
     "HANDLERS" : {
 	"PUT" : {
-	    "projects/adduser" : { "method" : "service.projects.Projects.adduser",
-				   "parameters" : ["name"] }
+	    "/projects/admin/login" : { "method" : "service.projects.Admin.login",
+					"parameters" : ["username", "password"] },
+	    "/projects/admin/logout" : { "method" : "service.projects.Admin.logout",
+					 "parameters" : ["token"] },
+	    "/projects/admin/adduser" : { "method" : "service.projects.Admin.add_user",
+					  "parameters" : ["username", "password", "name", "surname", "email"] },
+	    "/projects/admin/deluser" : { "method" : "service.projects.Admin.del_user",
+					  "parameters" : ["username"] },
+	    "/projects/login" : { "method" : "service.projects.Projects.login",
+				  "parameters" : ["username", "password"] },
+	    "/projects/logout" : { "method" : "service.projects.Projects.logout",
+				   "parameters" : ["token"] }
 	},
 	"GET" : {
 	}

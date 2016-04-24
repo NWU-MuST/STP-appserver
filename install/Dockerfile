@@ -15,7 +15,8 @@ RUN a2enmod proxy
 #Setup user and source code for platform
 RUN useradd -ms /bin/bash dac
 ENV HOME=/home/dac
-ENV STP=/mnt/stp    #Should correspond to definitions in `app_server/config/*`
+#Next line should correspond to definitions in `app_server/config/*`
+ENV STP=/mnt/stp
 WORKDIR $HOME
 
 #Install application server

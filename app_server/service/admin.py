@@ -7,28 +7,33 @@ try:
 except ImportError:
     from pysqlite2 import dbapi2 as sqlite
 
-from auth import Auth
-from exceptions import BadRequestError, ConflictError
+import bcrypt #Ubuntu/Debian: apt-get install python-bcrypt
 
-class Admin(Auth):
+import auth
+from httperrs import BadRequestError, ConflictError
+
+class Admin(auth.UserAuth):
     """Implements all functions related to updating user information in
        the auth database.
     """
-
-    def adduser(self, request):
-        if not set(request.keys()) >= {"username", "password", "name", "surname", "email"}:
+    def add_user(self, request):
+        #DEMIT: do we need to check parms here?
+        if not set(request.keys()) >= {"token", "username", "password", "name", "surname", "email"}:
             raise BadRequestError
+        #AUTHORISE REQUEST
+        auth.token_auth(request["token"], self._config["authdb"])
+        #EXECUTE REQUEST
         salt = bcrypt.gensalt()
         pwhash = bcrypt.hashpw(request["password"], salt)
         try:
-            with sqlite.connect(self._config["authdb_file"]) as db_conn:
+            with sqlite.connect(self._config["target_authdb"]) as db_conn:
                 db_curs = db_conn.cursor()
-                db_curs.execute("INSERT INTO users (username, pwhash, salt, name, surname, email)", (request["username"],
-                                                                                                     pwhash,
-                                                                                                     salt,
-                                                                                                     request["name"],
-                                                                                                     request["surname"],
-                                                                                                     request["email"]))
+                db_curs.execute("INSERT INTO users (username, pwhash, salt, name, surname, email) VALUES (?,?,?,?,?,?)", (request["username"],
+                                                                                                                          pwhash,
+                                                                                                                          salt,
+                                                                                                                          request["name"],
+                                                                                                                          request["surname"],
+                                                                                                                          request["email"]))
                 db_conn.commit()
         except sqlite.IntegrityError as e:
             raise ConflictError(e)
@@ -36,11 +41,14 @@ class Admin(Auth):
             raise BadRequestError(e)
         return "User added"
 
-    def deluser(self, request):
-        if not set(request.keys()) >= {"username"}:
+    def del_user(self, request):
+        #DEMIT: do we need to check parms here?
+        if not set(request.keys()) >= {"token", "username"}:
             raise BadRequestError
-        with sqlite.connect(self._config["authdb_file"]) as db_conn:
+        #AUTHORISE REQUEST
+        auth.token_auth(request["token"], self._config["authdb"])
+        #EXECUTE REQUEST
+        with sqlite.connect(self._config["target_authdb"]) as db_conn:
             db_curs = db_conn.cursor()
             db_curs.execute("DELETE FROM users WHERE username='?'", request["username"])
             db_conn.commit()
-        

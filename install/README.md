@@ -19,3 +19,9 @@ and run:
 ```bash
 docker build -t stp_base .
 ```
+
+to run the services we need to mount the location where persistent files (such as auth databases) are stored on the host filesystem, e.g. to use the host location `~/stp` to test the system:
+
+```bash
+docker run --name stp -v ~/stp:/mnt/stp -d -p 9999:80 stp_base:latest
+```
