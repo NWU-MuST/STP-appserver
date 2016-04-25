@@ -4,13 +4,14 @@ BUILDING AN APPLICATION SERVER DOCKER IMAGE
 This directory contains the files necessary to build a Docker image. To build place the `Dockerfile` and complete repository in a subdirectory called `stp` in a build location with structure as follows:
 
 ```
-.
+~/stp/
 |-- Dockerfile
 `-- stp
+    |-- README.md
     |-- app_server
     |   |-- config
     |   |-- service
-    |   `-- tools
+    |   |-- tools
     `-- install
 ```
 
@@ -23,7 +24,7 @@ docker build -t stp_base .
 Testing the built service
 -------------------------
 
-Firstly, create a directory on the host filesystem to serve as persistent file storage location (we will use `~/stp` as an example):
+Firstly, create a directory on the host filesystem to serve as persistent file storage location and copy repository to this location (we will use `~/stp` as an example):
 
 ```bash
 mkdir ~/stp
@@ -48,7 +49,7 @@ Log into the _projects admin_ service as root:
 curl -i -k -v -H "Content-Type: application/json" -X PUT -d '{"username": "root", "password": "rootpass"}' http://127.0.0.1:9999/wsgi/projects/admin/login
 ```
 
-which should return a token, e.g.:
+which should return a token (your token will be different and you must keep track of this token as subsquent requests make use of this token), e.g.:
 
 ```json
 {"message": "YmVkNWEyNzYtM2IwZS00ZDFmLTg0YjAtYzk0YjU3ZjI2N2I1"}
@@ -67,3 +68,10 @@ curl -i -k -v -H "Content-Type: application/json" -X PUT -d '{"username": "neil"
 ```
 
 Use the returned token to access other functions of the _projects_ service.
+
+To stop and remove the docker container run the following:
+```bash
+docker stop stp
+docker rm stp
+```
+
