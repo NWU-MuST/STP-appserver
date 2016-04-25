@@ -50,5 +50,5 @@ class Admin(auth.UserAuth):
         #EXECUTE REQUEST
         with sqlite.connect(self._config["target_authdb"]) as db_conn:
             db_curs = db_conn.cursor()
-            db_curs.execute("DELETE FROM users WHERE username='?'", request["username"])
+            db_curs.execute("DELETE FROM users WHERE username='?'", (request["username"],))
             db_conn.commit()
