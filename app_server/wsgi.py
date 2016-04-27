@@ -35,14 +35,8 @@ def application(env, start_response):
         start_response('200 OK', response_header)
         return [response]
 
-    elif env['REQUEST_METHOD'] == 'PUT':
-        print(router)
-        (status, response) = router.put(env)
-        response_header = [('Content-Type','application/json'), ('Content-Length', str(len(response)))]
-        start_response('200 OK', response_header)
-        return [response]
     else:
-        msg = json.dumps({'message' : 'Error: use either GET, PUT or POST'})
+        msg = json.dumps({'message' : 'Error: use either GET, POST'})
         response_header = [('Content-Type','application/json'), ('Content-Length', str(len(msg)))]
         start_response('405 Method Not Allowed', response_header)
         return [msg]

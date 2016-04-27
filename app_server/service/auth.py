@@ -78,7 +78,7 @@ class UserAuth(object):
                                                                                            username,
                                                                                            time.time() + self._config["toklife"]))
             db_conn.commit()
-        return token #DEMIT: should be JSON package?
+        return json.dumps({"token": token})
 
     def logout(self, request):
         """The DB/service actually logged out of is determined by the service
@@ -89,9 +89,9 @@ class UserAuth(object):
             raise BadRequestError
         with sqlite.connect(self._config["authdb"]) as db_conn:
             db_curs = db_conn.cursor()
-            db_curs.execute("DELETE FROM tokens WHERE token=?", (request["token"],))
+            db_curs.execute("DELETE FROM tokens WHERE token='%s'" % request["token"])
             db_conn.commit()
-
+        return json.dumps({'message' : "User logged out"})
 
 def test():
     """Informal tests...

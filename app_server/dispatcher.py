@@ -113,30 +113,27 @@ class Dispatch:
         except Exception as e:
             return '503 Internal Server Error', json.dumps({'message' : str(e)})
 
-    def post(self, path):
-        pass
-
-    def put(self, env):
+    def post(self, env):
         uri = env['PATH_INFO']
-        if uri not in self._routing['PUT']:
-            return '405 Method Not Allowed', json.dumps({'message' : 'PUT does not support: %s' % uri})
+        if uri not in self._routing['POST']:
+            return '405 Method Not Allowed', json.dumps({'message' : 'POST does not support: %s' % uri})
             
         try:
             data = json.loads(env['wsgi.input'].read(int(env['CONTENT_LENGTH'])))
 
-            for parameter in self._routing['PUT'][uri]['parameters']:
+            for parameter in self._routing['POST'][uri]['parameters']:
                 if parameter not in data:
                     return '400 Bad Request', json.dumps({'message' : 'missing parameter in request body: %s' % parameter})
 
-            module_name = self._routing['PUT'][uri]['module']
+            module_name = self._routing['POST'][uri]['module']
             module_config = self._module_config[module_name]
             module_hook = self._modules[module_name]
 
             module = module_hook(module_config)
-            method = getattr(module, self._routing['PUT'][uri]['method'])
+            method = getattr(module, self._routing['POST'][uri]['method'])
             result = method(data)
 
-            return '200 OK', json.dumps({'message' : result})
+            return '200 OK', result
 
         except Exception as e:
             return '400 Bad Request', json.dumps({'message' : str(e)})

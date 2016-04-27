@@ -9,6 +9,7 @@ except ImportError:
 
 import bcrypt #Ubuntu/Debian: apt-get install python-bcrypt
 
+import json
 import auth
 from httperrs import BadRequestError, ConflictError
 
@@ -39,7 +40,7 @@ class Admin(auth.UserAuth):
             raise ConflictError(e)
         except KeyError as e:
             raise BadRequestError(e)
-        return "User added"
+        return json.dumps({'message': "User added"})
 
     def del_user(self, request):
         #DEMIT: do we need to check parms here?
@@ -50,5 +51,7 @@ class Admin(auth.UserAuth):
         #EXECUTE REQUEST
         with sqlite.connect(self._config["target_authdb"]) as db_conn:
             db_curs = db_conn.cursor()
-            db_curs.execute("DELETE FROM users WHERE username='?'", (request["username"],))
+            db_curs.execute("DELETE FROM users WHERE username='%s'" % request["username"])
             db_conn.commit()
+
+        return json.dumps({'message': "User removed"})
