@@ -91,6 +91,8 @@ class Project:
             res = requests.post(BASEURL + "projects/createproject", headers=headers, data=json.dumps(data))
             print('SERVER SAYS:', res.text)
             print(res.status_code)
+            pkg = res.json()
+            self.projectid = pkg['projectid']
         else:
             print("User not logged in!")
         print('')
@@ -100,6 +102,42 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.user_token}
             res = requests.post(BASEURL + "projects/listprojects", headers=headers, data=json.dumps(data))
+            print('SERVER SAYS:', res.text)
+            print(res.status_code)
+        else:
+            print("User not logged in!")
+        print('')
+
+    def loadproject(self):
+        if self.user_token is not None and self.projectid is not None:
+            headers = {"Content-Type" : "application/json"}
+            data = {"token": self.user_token, "projectid" : self.projectid}
+            res = requests.post(BASEURL + "projects/loadproject", headers=headers, data=json.dumps(data))
+            print('SERVER SAYS:', res.text)
+            print(res.status_code)
+        else:
+            print("User not logged in!")
+        print('')
+
+    def projectaudio(self):
+        if self.user_token is not None and self.projectid is not None:
+            params = {'token' : self.user_token, 'projectid' : self.projectid}
+            res = requests.get(BASEURL + "projects/projectaudio", params=params)
+            print(res.status_code)
+            if res.status_code == 200:
+                with open('tmp.bin', 'wb') as f:
+                    f.write(res.content)
+            else:
+                print('SERVER SAYS:', res.text)
+        else:
+            print("User not logged in!")
+        print('')
+
+
+    def uploadaudio(self):
+        if self.user_token is not None and self.projectid is not None:
+            files = {'file' : open('test.mp3', 'rb'), 'filename' : 'test.mp3', 'token' : self.user_token, 'projectid' : self.projectid}
+            res = requests.post(BASEURL + "projects/uploadaudio", files=files)
             print('SERVER SAYS:', res.text)
             print(res.status_code)
         else:
@@ -127,6 +165,8 @@ if __name__ == "__main__":
                 print("LISTCATEGORIES - list project categories")
                 print("CREATEPROJECT - create a new project")
                 print("LISTPROJECTS - list projects")
+                print("LOADPROJECT - load projects")
+                print("UPLOADAUDIO - upload audio to project")
                 print("EXIT - quit")
 
             else:

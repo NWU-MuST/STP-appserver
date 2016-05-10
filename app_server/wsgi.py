@@ -26,6 +26,7 @@ def application(env, start_response):
     if env['REQUEST_METHOD'] == 'GET':
         (status, response) = router.get(env)
         try:
+            response = json.loads(response)
             f = open(response['filename'], 'rb')
             data = f.read()
             f.close()

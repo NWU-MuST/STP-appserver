@@ -9,6 +9,7 @@ import datetime
 import base64
 import auth
 import admin
+import os
 
 try:
     from sqlite3 import dbapi2 as sqlite
@@ -33,7 +34,7 @@ class Projects(auth.UserAuth):
         """
         #AUTHORISE REQUEST
         username = auth.token_auth(request["token"], self._config["authdb"])
-        return json.dumps({'categories' : self._categories})
+        return {'categories' : self._categories}
 
     def create_project(self, request):
         """
@@ -77,7 +78,7 @@ class Projects(auth.UserAuth):
             db_curs.execute(query)
             db_conn.commit()
 
-        return json.dumps({'projectid' : projectid})
+        return {'projectid' : projectid}
 
     def list_projects(self, request):
         """
@@ -93,7 +94,7 @@ class Projects(auth.UserAuth):
             db_curs.execute("SELECT * FROM projects where username='%s'" % username)
             projects = db_curs.fetchall()
 
-        return json.dumps({'projects' : projects})
+        return {'projects' : projects}
 
     def delete_project(self, request):
         """
@@ -110,7 +111,7 @@ class Projects(auth.UserAuth):
             table_name = 'T%s' % project_info[0][-2]
             db_curs.execute("DELETE FROM %s WHERE projectid='%s'" % (table_name, request["projectid"]))
             db_conn.commit()
-        return json.dumps({'message' : "Project deleted!"})
+        return "Project deleted!"
 
     def load_project(self, request):
         """
@@ -127,7 +128,7 @@ class Projects(auth.UserAuth):
             db_curs.execute("SELECT * FROM %s WHERE projectid='%s'" % (table_name, request["projectid"]))
             task_info = db_curs.fetchall()
             db_conn.commit()
-        return json.dumps({'tasks' : task_info})
+        return {'project' : project_info, 'tasks' : task_info}
 
     def save_project(self, request):
         """
@@ -145,11 +146,12 @@ class Projects(auth.UserAuth):
             db_curs.executemany("INSERT INTO %s (projectid, editor, collator, start, end, textfile, timestamp, editorrw, collatorrw) VALUES(?,?,?,?,?,?,?,?,?)" % table_name, (request["task"]))
             db_conn.commit()
 
-        return json.dumps({'message' : 'Projects saved!'})
+        return 'Projects saved!'
 
     def upload_audio(self, request):
         """
             Audio uploaded to project space
+            TODO: convert audio to OGG Vorbis, mp3splt for editor
         """
         #AUTHORISE REQUEST
         username = auth.token_auth(request["token"], self._config["authdb"])
@@ -158,10 +160,10 @@ class Projects(auth.UserAuth):
             db_curs = db_conn.cursor()
             db_curs.execute("SELECT audiofile FROM projects WHERE projectid='%s'" % request["projectid"])
             audiofile = db_curs.fetchone()
-            if audiofile is not None or audiofile[0] != '':
+            if audiofile is not None and audiofile[0] != '':
                 os.remove(audiofile[0])
 
-        location = os.path.join(self._config["storage"], datetime.datetime.now().strftime('%Y-%M-%d'))
+        location = os.path.join(self._config["storage"], datetime.datetime.now().strftime('%Y-%m-%d'))
         if not os.path.exists(location):
             os.mkdir(location)
 
@@ -174,7 +176,7 @@ class Projects(auth.UserAuth):
             db_curs.execute("UPDATE projects SET audiofile = '%s' WHERE projectid='%s'" % (new_filename, request["projectid"]))
             db_conn.commit()
 
-        return json.dumps({'message' : 'Audio Saved!'})
+        return 'Audio Saved!'
 
     def project_audio(self, request):
         """
@@ -188,7 +190,7 @@ class Projects(auth.UserAuth):
             db_curs.execute("SELECT audiofile FROM projects WHERE projectid='%s'" % request["projectid"])
             audiofile = db_curs.fetchone()
 
-        return json.dumps({'filename' : audiofile[0]})
+        return {'filename' : audiofile[0]}
 
     def diarize_audio(self, request):
         #AUTHORISE REQUEST

@@ -25,6 +25,8 @@
 					  "parameters" : ["token", "projectname", "category"] },
 	    "/projects/listprojects" : { "method" : "service.projects.Projects.list_projects",
 					  "parameters" : ["token"] },
+	    "/projects/loadproject" : { "method" : "service.projects.Projects.load_project",
+					  "parameters" : ["token", "projectid"] },
 	    "/projects/uploadaudio" : { "method" : "service.projects.Projects.upload_audio",
 					  "parameters" : ["token", "projectid", "filename", "file"] }
 	    },
@@ -39,7 +41,7 @@
     "logging" : {
 	"dir" : "/mnt/stp/",
 	"format" : "%(asctime)s :: %(name)s :: %(levelname)s :: %(message)s"
-    },
+    }
 
 }
 

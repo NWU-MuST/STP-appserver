@@ -101,6 +101,13 @@ class Dispatch:
             if len(env['QUERY_STRING']) != 0:
                 data = cgi.parse_qs(env['QUERY_STRING'])
 
+            for key in data:
+                data[key] = data[key][0]
+
+            for parameter in self._routing['GET'][uri]['parameters']:
+                if parameter not in data:
+                    return '400 Bad Request', json.dumps({'message' : 'missing parameter in request body: %s' % parameter})
+
             module_name = self._routing['GET'][uri]['module']
             module_config = self._module_config[module_name]
             module_hook = self._modules[module_name]
@@ -110,7 +117,7 @@ class Dispatch:
 
             dispatch_result = {"message": None}
             result = method(data)
-            if type(result) is str:
+            if type(result) in [str, unicode]:
                 dispatch_result["message"] = result
             elif type(result) is dict:
                 dispatch_result.update(result)
@@ -119,7 +126,7 @@ class Dispatch:
             return '200 OK', json.dumps(dispatch_result)
 
         except Exception as e:
-            return '503 Internal Server Error', json.dumps({'message' : str(e)})
+            return '500 Internal Server Error', json.dumps({'message' : str(e)})
 
     def post(self, env):
         uri = env['PATH_INFO']
@@ -137,7 +144,7 @@ class Dispatch:
                 form_raw = cgi.parse_multipart(cStringIO.StringIO(request_body), {'boundary': bound})
                 for key in form_raw.keys():
                     data[key] = form_raw[key][0]
-
+                print(data.keys())
             for parameter in self._routing['POST'][uri]['parameters']:
                 if parameter not in data:
                     return '400 Bad Request', json.dumps({'message' : 'missing parameter in request body: %s' % parameter})
@@ -147,11 +154,11 @@ class Dispatch:
             module_hook = self._modules[module_name]
 
             module = module_hook(module_config)
-            method = getattr(module, self._routing['PUT'][uri]['method'])
+            method = getattr(module, self._routing['POST'][uri]['method'])
 
             dispatch_result = {"message": None}
             result = method(data)
-            if type(result) is str:
+            if type(result) in [str, unicode]:
                 dispatch_result["message"] = result
             elif type(result) is dict:
                 dispatch_result.update(result)

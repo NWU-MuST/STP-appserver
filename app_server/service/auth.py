@@ -86,7 +86,7 @@ class UserAuth(object):
             db_curs = db_conn.cursor()
             db_curs.execute("DELETE FROM tokens WHERE token='%s'" % request["token"])
             db_conn.commit()
-        return json.dumps({'message' : "User logged out"})
+        return "User logged out"
 
 def test():
     """Informal tests...

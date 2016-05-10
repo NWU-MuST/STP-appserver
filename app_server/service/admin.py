@@ -35,7 +35,7 @@ class Admin(auth.UserAuth):
             raise ConflictError(e)
         except KeyError as e:
             raise BadRequestError(e)
-        return json.dumps({'message': "User added"})
+        return "User added"
 
     def del_user(self, request):
         auth.token_auth(request["token"], self._config["authdb"])
@@ -44,4 +44,5 @@ class Admin(auth.UserAuth):
             db_curs.execute("DELETE FROM users WHERE username='%s'" % request["username"])
             db_conn.commit()
 
-        return json.dumps({'message': "User removed"})
+        return "User removed"
+
