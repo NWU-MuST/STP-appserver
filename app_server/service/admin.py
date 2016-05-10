@@ -9,6 +9,7 @@ except ImportError:
 
 import bcrypt #Ubuntu/Debian: apt-get install python-bcrypt
 
+import json
 import auth
 from httperrs import BadRequestError, ConflictError, NotFoundError
 
@@ -40,8 +41,9 @@ class Admin(auth.UserAuth):
         auth.token_auth(request["token"], self._config["authdb"])
         with sqlite.connect(self._config["target_authdb"]) as db_conn:
             db_curs = db_conn.cursor()
-            db_curs.execute("DELETE FROM users WHERE username='?'", (request["username"],))
+            db_curs.execute("DELETE FROM users WHERE username='%s'" % request["username"])
             db_conn.commit()
+        return "User removed"
 
     def get_uinfo(self, request):
         auth.token_auth(request["token"], self._config["authdb"])
@@ -54,4 +56,3 @@ class Admin(auth.UserAuth):
             else:
                 username, pwhash, salt, name, surname, email = entry
                 return {"name": name, "surname": surname, "email": email}
-

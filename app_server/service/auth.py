@@ -84,9 +84,9 @@ class UserAuth(object):
         """
         with sqlite.connect(self._config["authdb"]) as db_conn:
             db_curs = db_conn.cursor()
-            db_curs.execute("DELETE FROM tokens WHERE token=?", (request["token"],))
+            db_curs.execute("DELETE FROM tokens WHERE token='%s'" % request["token"])
             db_conn.commit()
-
+        return "User logged out"
 
 def test():
     """Informal tests...

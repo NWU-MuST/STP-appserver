@@ -75,3 +75,8 @@ docker stop stp
 docker rm stp
 ```
 
+Setup projects database:
+```bash
+python stp/app_server/tools/projectdb.py ~/stp/projects.db
+```
+
