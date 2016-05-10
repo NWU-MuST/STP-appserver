@@ -17,7 +17,9 @@
 	    "/projects/login" : { "method" : "service.projects.Projects.login",
 				  "parameters" : ["username", "password"] },
 	    "/projects/logout" : { "method" : "service.projects.Projects.logout",
-				   "parameters" : ["token"] }
+				   "parameters" : ["token"] },
+	    "/projects/admin/userinfo" : { "method" : "service.projects.Admin.get_uinfo",
+					   "parameters" : ["username", "token"] }
 	},
 	"GET" : {
 	}
