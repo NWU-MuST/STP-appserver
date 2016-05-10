@@ -5,7 +5,7 @@
     },
 
     "HANDLERS" : {
-	"POST" : {
+	    "POST" : {
 	    "/projects/admin/login" : { "method" : "service.projects.Admin.login",
 					"parameters" : ["username", "password"] },
 	    "/projects/admin/logout" : { "method" : "service.projects.Admin.logout",
@@ -14,8 +14,6 @@
 					  "parameters" : ["token", "username", "password", "name", "surname", "email"] },
 	    "/projects/admin/deluser" : { "method" : "service.projects.Admin.del_user",
 					  "parameters" : ["token", "username"] },
-	    "/projects/admin/addcategories" : { "method" : "service.projects.Admin.add_categories",
-					  "parameters" : ["token", "categories"] },
 
 	    "/projects/login" : { "method" : "service.projects.Projects.login",
 				  "parameters" : ["username", "password"] },
@@ -27,15 +25,21 @@
 					  "parameters" : ["token", "projectname", "category"] },
 	    "/projects/listprojects" : { "method" : "service.projects.Projects.list_projects",
 					  "parameters" : ["token"] },
+	    "/projects/uploadaudio" : { "method" : "service.projects.Projects.upload_audio",
+					  "parameters" : ["token", "projectid", "filename", "file"] }
+	    },
 
+    	"GET" : {
+    	    "/projects/projectaudio" : { "method" : "service.projects.Projects.project_audio",
+					  "parameters" : ["token", "projectid"] }
+	    }
 
-	},
-	"GET" : {
-	}
     },
 
     "logging" : {
 	"dir" : "/mnt/stp/",
 	"format" : "%(asctime)s :: %(name)s :: %(levelname)s :: %(message)s"
-    }
+    },
+
 }
+

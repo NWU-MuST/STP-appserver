@@ -22,7 +22,6 @@ if __name__ == "__main__":
     
     db_conn = sqlite.connect(outfn)
     db_curs = db_conn.cursor()
-    db_curs.execute("CREATE TABLE projects ( projectid VARCHAR(36) PRIMARY KEY, projectname VARCHAR(32), category VARCHAR(36), username VARCHAR(20), creation TIMESTAMP )")
-    db_curs.execute("CREATE TABLE projectcategories ( category VARCHAR(36) PRIMARY KEY )")
+    db_curs.execute("CREATE TABLE projects ( projectid VARCHAR(36) PRIMARY KEY, projectname VARCHAR(32), category VARCHAR(36), username VARCHAR(20), audiofile VARCHAR(128), year INTEGER, creation REAL )")
     db_conn.commit()
 

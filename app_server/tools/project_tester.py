@@ -73,16 +73,37 @@ class Project:
             print("Admin not logged in!")
         print('')
 
-    def addcategories(self):
-        if self.admin_token is not None:
+    def listcategories(self):
+        if self.user_token is not None:
             headers = {"Content-Type" : "application/json"}
-            cats = [("House",), ("NCOP",), ("Comms",)]
-            data = {"token": self.admin_token, "categories" : cats}
-            res = requests.post(BASEURL + "projects/admin/addcategories", headers=headers, data=json.dumps(data))
+            data = {"token": self.user_token}
+            res = requests.post(BASEURL + "projects/listcategories", headers=headers, data=json.dumps(data))
             print('SERVER SAYS:', res.text)
             print(res.status_code)
         else:
-            print("Admin not logged in!")
+            print("User not logged in!")
+        print('')
+
+    def createproject(self):
+        if self.user_token is not None:
+            headers = {"Content-Type" : "application/json"}
+            data = {"token": self.user_token, "projectname" : "new_project", "category" : "NCOP" }
+            res = requests.post(BASEURL + "projects/createproject", headers=headers, data=json.dumps(data))
+            print('SERVER SAYS:', res.text)
+            print(res.status_code)
+        else:
+            print("User not logged in!")
+        print('')
+
+    def listprojects(self):
+        if self.user_token is not None:
+            headers = {"Content-Type" : "application/json"}
+            data = {"token": self.user_token}
+            res = requests.post(BASEURL + "projects/listprojects", headers=headers, data=json.dumps(data))
+            print('SERVER SAYS:', res.text)
+            print(res.status_code)
+        else:
+            print("User not logged in!")
         print('')
 
 
@@ -94,6 +115,8 @@ if __name__ == "__main__":
             cmd = raw_input("Enter command (type help for list)> ")
             cmd = cmd.lower()
             if cmd == "exit":
+                proj.logout()
+                proj.adminlout()
                 break
             elif cmd in ["help", "list"]:
                 print("LOGIN - user login")
@@ -101,7 +124,9 @@ if __name__ == "__main__":
                 print("ADMINLIN - Admin login")
                 print("ADMINLOUT - Admin logout")
                 print("ADDUSER - add new user")
-                print("ADDCATEGORIES - add project categories")
+                print("LISTCATEGORIES - list project categories")
+                print("CREATEPROJECT - create a new project")
+                print("LISTPROJECTS - list projects")
                 print("EXIT - quit")
 
             else:

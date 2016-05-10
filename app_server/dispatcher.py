@@ -7,6 +7,7 @@ import json
 import os
 import codecs
 import cgi
+import cStringIO
 from logger import Logger
 
 
@@ -119,7 +120,16 @@ class Dispatch:
             return '405 Method Not Allowed', json.dumps({'message' : 'POST does not support: %s' % uri})
             
         try:
-            data = json.loads(env['wsgi.input'].read(int(env['CONTENT_LENGTH'])))
+            data = {}
+            if 'multipart/form-data' not in env['CONTENT_TYPE']:
+                data = json.loads(env['wsgi.input'].read(int(env['CONTENT_LENGTH'])))
+            else:
+                (header, bound) = env['CONTENT_TYPE'].split('boundary=')
+                request_body_size = int(env.get('CONTENT_LENGTH', 0))
+                request_body = env['wsgi.input'].read(request_body_size)
+                form_raw = cgi.parse_multipart(cStringIO.StringIO(request_body), {'boundary': bound})
+                for key in form_raw.keys():
+                    data[key] = form_raw[key][0]
 
             for parameter in self._routing['POST'][uri]['parameters']:
                 if parameter not in data:
@@ -137,7 +147,6 @@ class Dispatch:
 
         except Exception as e:
             return '400 Bad Request', json.dumps({'message' : str(e)})
-
 
     def shutdown(self):
         """

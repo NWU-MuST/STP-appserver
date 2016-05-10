@@ -1,4 +1,6 @@
 { "authdb": "/mnt/stp/projects_auth.db",
   "projectdb": "/mnt/stp/projects.db",
-  "toklife": 31536000
+  "storage" : "/mnt/stp/storage",
+  "toklife": 31536000,
+  "categories" : ["National Assembly", "NCOP", "Committees", "General"]
 }
