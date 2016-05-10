@@ -16,6 +16,10 @@
 					  "parameters" : ["token", "username"] },
 	    "/projects/admin/userinfo" : { "method" : "service.projects.Admin.get_uinfo",
 					   "parameters" : ["username", "token"] },
+	    "/projects/admin/updateuser" : { "method" : "service.projects.Admin.update_user",
+					   "parameters" : ["username", "token"] },
+	    "/projects/admin/loadusers" : { "method" : "service.projects.Admin.get_users",
+					    "parameters" : ["token"] },
 
 	    "/projects/login" : { "method" : "service.projects.Projects.login",
 				  "parameters" : ["username", "password"] },
