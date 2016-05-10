@@ -1,17 +1,16 @@
 BUILDING AN APPLICATION SERVER DOCKER IMAGE
 ===========================================
 
-This directory contains the files necessary to build a Docker image. To build place the `Dockerfile` and complete repository in a subdirectory called `stp` in a build location with structure as follows:
+This directory contains the files necessary to build a Docker image. To build place the `Dockerfile` and complete repository in a build location with structure as follows:
 
 ```
-~/stp/
+.
 |-- Dockerfile
 `-- stp
-    |-- README.md
     |-- app_server
     |   |-- config
     |   |-- service
-    |   |-- tools
+    |   `-- tools
     `-- install
 ```
 
@@ -24,7 +23,7 @@ docker build -t stp_base .
 Testing the built service
 -------------------------
 
-Firstly, create a directory on the host filesystem to serve as persistent file storage location and copy repository to this location (we will use `~/stp` as an example):
+Firstly, create a directory on the host filesystem to serve as persistent file storage location (we will use `~/stp` as an example):
 
 ```bash
 mkdir ~/stp
@@ -79,4 +78,3 @@ Setup projects database:
 ```bash
 python stp/app_server/tools/projectdb.py ~/stp/projects.db
 ```
-
