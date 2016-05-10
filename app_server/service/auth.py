@@ -37,9 +37,10 @@ def token_auth(token, authdb):
     return username
 
 class UserAuth(object):
-    def __init__(self, config_file):
-        with open(config_file) as infh:
-            self._config = json.loads(infh.read())
+    def __init__(self, config_file=None):
+        if config_file is not None:
+            with open(config_file) as infh:
+                self._config = json.loads(infh.read())
 
     def login(self, request):
         """Validate provided username and password and insert new token into
@@ -48,9 +49,6 @@ class UserAuth(object):
              - The DB/service actually logged into is determined by
                the service as setup in the dispatcher
         """
-        #DEMIT: do we need to check parms here?
-        if not set(request.keys()) >= {"username", "password"}:
-            raise BadRequestError
         with sqlite.connect(self._config["authdb"]) as db_conn:
             #REMOVE STALE TOKENS
             db_curs = db_conn.cursor()
@@ -78,15 +76,12 @@ class UserAuth(object):
                                                                                            username,
                                                                                            time.time() + self._config["toklife"]))
             db_conn.commit()
-        return json.dumps({"token": token})
+        return {"token": token}
 
     def logout(self, request):
         """The DB/service actually logged out of is determined by the service
            as setup in the dispatcher
         """
-        #DEMIT: do we need to check parms here?
-        if not set(request.keys()) >= {"token"}:
-            raise BadRequestError
         with sqlite.connect(self._config["authdb"]) as db_conn:
             db_curs = db_conn.cursor()
             db_curs.execute("DELETE FROM tokens WHERE token='%s'" % request["token"])
@@ -118,18 +113,18 @@ def test():
     except NotAuthorizedError:
         print("TEST_1 SUCCESS:", "Wrong password caught...")
     ## 2
-    token = a.login({"username": "testuser", "password": "testpass"})
-    print("TEST_2 SUCCESS:", "User authenticated with token:", token)
+    tokenpackage = a.login({"username": "testuser", "password": "testpass"})
+    print("TEST_2 SUCCESS:", "User authenticated with token:", tokenpackage["token"])
     ## 3
     try:
-        username = token_auth(token, a._config["authdb"])
+        username = token_auth(tokenpackage["token"], a._config["authdb"])
         print("TEST_3 FAILED:", "Authenticated against expired token")
     except NotAuthorizedError:
         print("TEST_3 SUCCESS:", "Do not authenticate against expired token")
     ## 4
     a._config["toklife"] = 300
-    token = a.login({"username": "testuser", "password": "testpass"}) #should have been removed from tokens in previous test
-    username = token_auth(token, a._config["authdb"])
+    tokenpackage = a.login({"username": "testuser", "password": "testpass"}) #should have been removed from tokens in previous test
+    username = token_auth(tokenpackage["token"], a._config["authdb"])
     if username is not None:
         print("TEST_4 SUCCESS:", "Authenticated logged in username:", username)
     else:
@@ -140,9 +135,9 @@ def test():
     except ConflictError:
         print("TEST_5 SUCCESS:", "Already logged in caught...")
     ## 6
-    a.logout({"token": token})
+    a.logout(tokenpackage)
     try:
-        username = token_auth(token, a._config["authdb"])
+        username = token_auth(tokenpackage["token"], a._config["authdb"])
         print("TEST_6 FAILED:", "Authenticated against logged out token")
     except NotAuthorizedError:
         print("TEST_6 SUCCESS:", "Do not authenticate against logged out token")

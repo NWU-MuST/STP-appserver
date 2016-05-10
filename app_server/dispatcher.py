@@ -107,9 +107,16 @@ class Dispatch:
 
             module = module_hook(module_config)
             method = getattr(module, self._routing['GET'][uri]['method'])
-            result = method(data)
 
-            return '200 OK', json.dumps({'message' : result})
+            dispatch_result = {"message": None}
+            result = method(data)
+            if type(result) is str:
+                dispatch_result["message"] = result
+            elif type(result) is dict:
+                dispatch_result.update(result)
+            else:
+                raise Exception("Internal Server Error: Bad result type from service method")
+            return '200 OK', json.dumps(dispatch_result)
 
         except Exception as e:
             return '503 Internal Server Error', json.dumps({'message' : str(e)})
@@ -140,10 +147,17 @@ class Dispatch:
             module_hook = self._modules[module_name]
 
             module = module_hook(module_config)
-            method = getattr(module, self._routing['POST'][uri]['method'])
-            result = method(data)
+            method = getattr(module, self._routing['PUT'][uri]['method'])
 
-            return '200 OK', result
+            dispatch_result = {"message": None}
+            result = method(data)
+            if type(result) is str:
+                dispatch_result["message"] = result
+            elif type(result) is dict:
+                dispatch_result.update(result)
+            else:
+                raise Exception("Internal Server Error: Bad result type from service method")
+            return '200 OK', json.dumps(dispatch_result)
 
         except Exception as e:
             return '400 Bad Request', json.dumps({'message' : str(e)})

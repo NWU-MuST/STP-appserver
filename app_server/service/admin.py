@@ -18,12 +18,7 @@ class Admin(auth.UserAuth):
        the auth database.
     """
     def add_user(self, request):
-        #DEMIT: do we need to check parms here?
-        if not set(request.keys()) >= {"token", "username", "password", "name", "surname", "email"}:
-            raise BadRequestError
-        #AUTHORISE REQUEST
         auth.token_auth(request["token"], self._config["authdb"])
-        #EXECUTE REQUEST
         salt = bcrypt.gensalt()
         pwhash = bcrypt.hashpw(request["password"], salt)
         try:
@@ -43,12 +38,7 @@ class Admin(auth.UserAuth):
         return json.dumps({'message': "User added"})
 
     def del_user(self, request):
-        #DEMIT: do we need to check parms here?
-        if not set(request.keys()) >= {"token", "username"}:
-            raise BadRequestError
-        #AUTHORISE REQUEST
         auth.token_auth(request["token"], self._config["authdb"])
-        #EXECUTE REQUEST
         with sqlite.connect(self._config["target_authdb"]) as db_conn:
             db_curs = db_conn.cursor()
             db_curs.execute("DELETE FROM users WHERE username='%s'" % request["username"])
