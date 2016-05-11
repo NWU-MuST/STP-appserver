@@ -14,6 +14,12 @@
 					  "parameters" : ["token", "username", "password", "name", "surname", "email"] },
 	    "/projects/admin/deluser" : { "method" : "service.projects.Admin.del_user",
 					  "parameters" : ["token", "username"] },
+	    "/projects/admin/userinfo" : { "method" : "service.projects.Admin.get_uinfo",
+					   "parameters" : ["username", "token"] },
+	    "/projects/admin/updateuser" : { "method" : "service.projects.Admin.update_user",
+					   "parameters" : ["username", "token"] },
+	    "/projects/admin/loadusers" : { "method" : "service.projects.Admin.get_users",
+					    "parameters" : ["token"] },
 
 	    "/projects/login" : { "method" : "service.projects.Projects.login",
 				  "parameters" : ["username", "password"] },
@@ -29,13 +35,12 @@
 					  "parameters" : ["token", "projectid"] },
 	    "/projects/uploadaudio" : { "method" : "service.projects.Projects.upload_audio",
 					  "parameters" : ["token", "projectid", "filename", "file"] }
-	    },
+	},
 
     	"GET" : {
     	    "/projects/projectaudio" : { "method" : "service.projects.Projects.project_audio",
 					  "parameters" : ["token", "projectid"] }
 	    }
-
     },
 
     "logging" : {
@@ -44,4 +49,3 @@
     }
 
 }
-

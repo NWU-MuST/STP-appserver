@@ -115,7 +115,7 @@ class Dispatch:
             module = module_hook(module_config)
             method = getattr(module, self._routing['GET'][uri]['method'])
 
-            dispatch_result = {"message": None}
+            dispatch_result = dict()
             result = method(data)
             if type(result) in [str, unicode]:
                 dispatch_result["message"] = result
@@ -156,7 +156,7 @@ class Dispatch:
             module = module_hook(module_config)
             method = getattr(module, self._routing['POST'][uri]['method'])
 
-            dispatch_result = {"message": None}
+            dispatch_result = dict()
             result = method(data)
             if type(result) in [str, unicode]:
                 dispatch_result["message"] = result
