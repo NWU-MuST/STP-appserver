@@ -27,6 +27,7 @@ LISTPROJECTS - list projects
 LOADPROJECT - load projects
 UPLOADAUDIO - upload audio to project
 PROJECTAUDIO - retrieve project audio
+SAVEPROJECT - save tasks to a project
 
 EXIT - quit
 Enter command (type help for list)>
@@ -79,15 +80,13 @@ UPLOADAUDIO
 
 PROJECTAUDIO
 ------------
-    Retrieve uploaded project audio. This will save the audio to `tmp.bin`. Run `LOGIN`, `CREATEPROJECT`, `UPLOADAUDIO` first.
+    Retrieve uploaded project audio. This will save the audio to `tmp.ogg`. Run `LOGIN`, `CREATEPROJECT`, `UPLOADAUDIO` first.
+
+SAVEPROJECT
+-----------
+    Save defined tasks to a project. Run `LOGIN`, `CREATEPROJECT`, `UPLOADAUDIO` first.
 
 EXIT
 ----
     Quit the script and logout as user and admin, if logged in.
-
-
-TODO:
-=====
-
-SAVEPROJECT
 

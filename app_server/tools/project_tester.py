@@ -5,6 +5,7 @@ from __future__ import unicode_literals, division, print_function #Py2
 import requests
 import sys
 import json
+import os
 
 BASEURL = "http://127.0.0.1:9999/wsgi/"
 
@@ -16,6 +17,10 @@ class Project:
         self.admin_token = None
 
     def login(self):
+        """
+            Login as user
+            Place user 'token' in self.user_token
+        """
         if self.user_token is None:
             headers = {"Content-Type" : "application/json"}
             data = {"username": "neil", "password": "neil"}
@@ -28,6 +33,10 @@ class Project:
         print('')
 
     def adminlin(self):
+        """
+            Login as admin
+            Place admin 'token' in self.admin_token
+        """
         if self.admin_token is None:
             headers = {"Content-Type" : "application/json"}
             data = {"username": "root", "password": "123456"}
@@ -41,6 +50,9 @@ class Project:
         print('')
 
     def adminlout(self):
+        """
+            Logout as admin
+        """
         if self.admin_token is not None:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.admin_token}
@@ -52,6 +64,9 @@ class Project:
         print('')
 
     def logout(self):
+        """
+            Logout as user
+        """
         if self.user_token is not None:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.user_token}
@@ -63,6 +78,10 @@ class Project:
         print('')
 
     def adduser(self):
+        """
+            Add user project database
+            User details: "username": "neil", "password": "neil", "name": "neil", "surname": "kleynhans", "email": "neil@organisation.org"
+        """
         if self.admin_token is not None:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.admin_token, "username": "neil", "password": "neil", "name": "neil", "surname": "kleynhans", "email": "neil@organisation.org"}
@@ -74,6 +93,9 @@ class Project:
         print('')
 
     def listcategories(self):
+        """
+            List the project categories defined in project JSON config
+        """
         if self.user_token is not None:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.user_token}
@@ -85,6 +107,10 @@ class Project:
         print('')
 
     def createproject(self):
+        """
+            Create a new project
+            Save returned projectid in self.projectid
+        """
         if self.user_token is not None:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.user_token, "projectname" : "new_project", "category" : "NCOP" }
@@ -98,6 +124,9 @@ class Project:
         print('')
 
     def listprojects(self):
+        """
+            List all projects belonging to user
+        """
         if self.user_token is not None:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.user_token}
@@ -109,6 +138,9 @@ class Project:
         print('')
 
     def loadproject(self):
+        """
+            Load a specific projects details
+        """
         if self.user_token is not None and self.projectid is not None:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.user_token, "projectid" : self.projectid}
@@ -120,12 +152,16 @@ class Project:
         print('')
 
     def projectaudio(self):
+        """
+            Return uploaded project audio
+            Will save the uploaded audio to 'tmp.ogg' in current location
+        """
         if self.user_token is not None and self.projectid is not None:
             params = {'token' : self.user_token, 'projectid' : self.projectid}
             res = requests.get(BASEURL + "projects/projectaudio", params=params)
             print(res.status_code)
             if res.status_code == 200:
-                with open('tmp.bin', 'wb') as f:
+                with open('tmp.ogg', 'wb') as f:
                     f.write(res.content)
             else:
                 print('SERVER SAYS:', res.text)
@@ -135,8 +171,16 @@ class Project:
 
 
     def uploadaudio(self):
+        """
+            Upload audio to project
+            Requires test.ogg to be located in current location
+        """
+        if not os.path.exists('test.ogg'):
+            print('Cannot run UPLOADAUDIO as "test.ogg" does not exist in current path')
+            return
+
         if self.user_token is not None and self.projectid is not None:
-            files = {'file' : open('test.mp3', 'rb'), 'filename' : 'test.mp3', 'token' : self.user_token, 'projectid' : self.projectid}
+            files = {'file' : open('test.ogg', 'rb'), 'filename' : 'test.ogg', 'token' : self.user_token, 'projectid' : self.projectid}
             res = requests.post(BASEURL + "projects/uploadaudio", files=files)
             print('SERVER SAYS:', res.text)
             print(res.status_code)
@@ -145,7 +189,26 @@ class Project:
         print('')
 
 
+    def saveproject(self):
+        """
+            Save tasks for a specific project
+            tasks should be a list with these elements:
+            tasks = [(editor<string:20>, collater<string:20>, start<float>, end<float>), (), ...]
+        """
+        if self.user_token is not None and self.projectid is not None:
+            headers = {"Content-Type" : "application/json"}
+            tasks = [('neil', 'neil', 0.0, 10.0), ('neil', 'neil', 20.0, 34.5)]
+            data = {"token": self.user_token, "projectid" : self.projectid, "tasks": tasks}
+            res = requests.post(BASEURL + "projects/saveproject", headers=headers, data=json.dumps(data))
+            print('SERVER SAYS:', res.text)
+            print(res.status_code)
+        else:
+            print("User not logged in!")
+        print('')
+
+
 if __name__ == "__main__":
+    print('Accessing Docker app server via: http://127.0.0.1:9999/wsgi/')
     proj = Project()
 
     try:
@@ -157,16 +220,18 @@ if __name__ == "__main__":
                 proj.adminlout()
                 break
             elif cmd in ["help", "list"]:
-                print("LOGIN - user login")
-                print("LOGOUT - user logout")
                 print("ADMINLIN - Admin login")
                 print("ADMINLOUT - Admin logout")
-                print("ADDUSER - add new user")
+                print("ADDUSER - add new user\n")
+                print("LOGIN - user login")
+                print("LOGOUT - user logout")
                 print("LISTCATEGORIES - list project categories")
                 print("CREATEPROJECT - create a new project")
                 print("LISTPROJECTS - list projects")
                 print("LOADPROJECT - load projects")
                 print("UPLOADAUDIO - upload audio to project")
+                print("PROJECTAUDIO - retrieve project audio")
+                print("SAVEPROJECT - save tasks to a project\n")
                 print("EXIT - quit")
 
             else:

@@ -142,11 +142,19 @@ class Projects(auth.UserAuth):
             db_curs.execute("SELECT * FROM projects WHERE projectid='%s'" % request["projectid"])
             project_info = db_curs.fetchall()
             table_name = 'T%s' % project_info[0][-2]
+            audiodir = os.path.dirname(project_info[0][-3])
+
+            task = []
+            for editor, collator, start, end in request["tasks"]:
+                textfile = os.path.join(audiodir, base64.urlsafe_b64encode(str(uuid.uuid4())))
+                open(textfile, 'wb').close()
+                task.append((request["projectid"], editor, collator, float(start), float(end), textfile, time.time(), 'Y', 'N'))
+
             db_curs.execute("DELETE FROM %s WHERE projectid='%s'" % (table_name, request["projectid"]))
-            db_curs.executemany("INSERT INTO %s (projectid, editor, collator, start, end, textfile, timestamp, editorrw, collatorrw) VALUES(?,?,?,?,?,?,?,?,?)" % table_name, (request["task"]))
+            db_curs.executemany("INSERT INTO %s (projectid, editor, collator, start, end, textfile, timestamp, editorrw, collatorrw) VALUES(?,?,?,?,?,?,?,?,?)" % table_name, (task))
             db_conn.commit()
 
-        return 'Projects saved!'
+        return 'Project saved!'
 
     def upload_audio(self, request):
         """
@@ -163,9 +171,9 @@ class Projects(auth.UserAuth):
             if audiofile is not None and audiofile[0] != '':
                 os.remove(audiofile[0])
 
-        location = os.path.join(self._config["storage"], datetime.datetime.now().strftime('%Y-%m-%d'))
+        location = os.path.join(self._config["storage"], datetime.datetime.now().strftime('%Y-%m-%d'), username)
         if not os.path.exists(location):
-            os.mkdir(location)
+            os.makedirs(location)
 
         new_filename = os.path.join(location, base64.urlsafe_b64encode(str(uuid.uuid4())))
         with open(new_filename, 'wb') as f:

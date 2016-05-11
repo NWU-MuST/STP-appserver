@@ -34,7 +34,9 @@
 	    "/projects/loadproject" : { "method" : "service.projects.Projects.load_project",
 					  "parameters" : ["token", "projectid"] },
 	    "/projects/uploadaudio" : { "method" : "service.projects.Projects.upload_audio",
-					  "parameters" : ["token", "projectid", "filename", "file"] }
+					  "parameters" : ["token", "projectid", "filename", "file"] },
+	    "/projects/saveproject" : { "method" : "service.projects.Projects.save_project",
+					  "parameters" : ["token", "projectid", "tasks"] }
 	},
 
     	"GET" : {
