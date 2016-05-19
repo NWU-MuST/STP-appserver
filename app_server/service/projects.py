@@ -7,16 +7,17 @@ import json
 import time
 import datetime
 import base64
+import os
+
 import auth
 import admin
-import os
 
 try:
     from sqlite3 import dbapi2 as sqlite
 except ImportError:
     from pysqlite2 import dbapi2 as sqlite #for old Python versions
 
-from httperrs import *
+from httperrs import BadRequestError, NotFoundError
 
 class Admin(admin.Admin):
     pass
@@ -32,7 +33,6 @@ class Projects(auth.UserAuth):
         """
             List Admin created project categories
         """
-        #AUTHORISE REQUEST
         username = auth.token_auth(request["token"], self._config["authdb"])
         return {'categories' : self._categories}
 
@@ -40,9 +40,8 @@ class Projects(auth.UserAuth):
         """
             Create a new project for a user
         """
-        #AUTHORISE REQUEST
         username = auth.token_auth(request["token"], self._config["authdb"])
-        #EXECUTE REQUEST
+
         projectid = None
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
@@ -84,9 +83,8 @@ class Projects(auth.UserAuth):
         """
             List current projects owned by user
         """
-        #AUTHORISE REQUEST
         username = auth.token_auth(request["token"], self._config["authdb"])
-        #EXECUTE REQUEST
+
         projects = []
         with sqlite.connect(self._config['projectdb']) as db_conn:
             # Fetch all projects
@@ -100,9 +98,8 @@ class Projects(auth.UserAuth):
         """
             Delete project and remove tasks
         """
-        #AUTHORISE REQUEST
         auth.token_auth(request["token"], self._config["authdb"])
-        #EXECUTE REQUEST
+
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
             db_curs.execute("SELECT * FROM projects WHERE projectid='%s'" % request["projectid"])
@@ -117,9 +114,8 @@ class Projects(auth.UserAuth):
         """
             Load project tasks
         """
-        #AUTHORISE REQUEST
         auth.token_auth(request["token"], self._config["authdb"])
-        #EXECUTE REQUEST
+
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
             db_curs.execute("SELECT * FROM projects WHERE projectid='%s'" % request["projectid"])
@@ -134,9 +130,8 @@ class Projects(auth.UserAuth):
         """
             Save the project tasks
         """
-        #AUTHORISE REQUEST
         auth.token_auth(request["token"], self._config["authdb"])
-        #EXECUTE REQUEST
+
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
             db_curs.execute("SELECT * FROM projects WHERE projectid='%s'" % request["projectid"])
@@ -161,9 +156,8 @@ class Projects(auth.UserAuth):
             Audio uploaded to project space
             TODO: convert audio to OGG Vorbis, mp3splt for editor
         """
-        #AUTHORISE REQUEST
         username = auth.token_auth(request["token"], self._config["authdb"])
-        #EXECUTE REQUEST
+
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
             db_curs.execute("SELECT audiofile FROM projects WHERE projectid='%s'" % request["projectid"])
@@ -190,9 +184,8 @@ class Projects(auth.UserAuth):
         """
             Make audio avaliable for project user
         """
-        #AUTHORISE REQUEST
         auth.token_auth(request["token"], self._config["authdb"])
-        #EXECUTE REQUEST
+
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
             db_curs.execute("SELECT audiofile FROM projects WHERE projectid='%s'" % request["projectid"])
@@ -201,11 +194,56 @@ class Projects(auth.UserAuth):
         return {'filename' : audiofile[0]}
 
     def diarize_audio(self, request):
-        #AUTHORISE REQUEST
         auth.token_auth(request["token"], self._config["authdb"])
-        #EXECUTE REQUEST
-        raise NotImplementedError
-
+        
+        #Attempt to "lock" project and create I/O access
+        with sqlite.connect(self._config['projectdb']) as db_conn:
+            db_curs = db_conn.cursor()
+            db_curs.execute("BEGIN IMMEDIATE") #lock the db early...
+            db_curs.execute("SELECT * FROM projects WHERE projectid=?", (request["projectid"],))
+            entry = db_curs.fetchone()
+            #Project exists?
+            if entry is None:
+                db_conn.commit()
+                raise NotFoundError("Project not found")
+            #Project clean?
+            projid, projname, projcat, username, audiofile, year, creation, jobid, errstatus = entry
+            if jobid:
+                db_conn.commit()
+                raise ConflictError("A job with id '{}' is already pending on this project".format(jobid))
+            #Setup I/O access
+            inurl = auth.gen_token()
+            outurl = auth.gen_token()
+            db_curs.execute("UPDATE projects SET jobid=? WHERE projectid=?", ("pending",
+                                                                              request["projectid"]))
+            db_curs.execute("INSERT INTO incoming (projectid, url) VALUES (?,?,?,?,?,?)", (request["projectid"],
+                                                                                           inurl))
+            db_curs.execute("INSERT INTO outgoing (projectid, url, audiofile) VALUES (?,?,?,?,?,?)", (request["projectid"],
+                                                                                                      outurl,
+                                                                                                      audiofile))
+            db_conn.commit()
+        #Make job request
+        jobreq = {"input": outurl, "output": inurl}
+        reqstatus = {"jobid": auth.gen_token()} #DEMIT: dummy call!
+        #Handle request status
+        if "jobid" in reqstatus: #no error
+            with sqlite.connect(self._config['projectdb']) as db_conn:
+                db_curs = db_conn.cursor()
+                db_curs.execute("UPDATE projects SET jobid=? WHERE projectid=?", (reqstatus["jobid"],
+                                                                                  request["projectid"]))
+                db_conn.commit()
+            return "Request successful!"
+        #Something went wrong: undo project setup
+        with sqlite.connect(self._config['projectdb']) as db_conn:
+            db_curs = db_conn.cursor()
+            db_curs.execute("UPDATE projects SET jobid=? WHERE projectid=?", ("",
+                                                                              request["projectid"]))
+            db_curs.execute("DELETE FROM incoming WHERE projectid=?", (request["projectid"],))
+            db_curs.execute("DELETE FROM outgoing WHERE projectid=?", (request["projectid"],))
+            db_conn.commit()
+        return reqstatus #DEMIT TODO: translate error from speech server!
+  
+            
 
 if __name__ == "__main__":
     pass

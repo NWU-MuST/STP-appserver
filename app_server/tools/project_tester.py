@@ -238,8 +238,8 @@ if __name__ == "__main__":
                 try:
                     meth = getattr(proj, cmd)
                     meth()
-                except:
-                    print('UNKWOWN COMMAND')
+                except Exception as e:
+                    print('Error processing command:', e)
 
     except:
         proj.logout()

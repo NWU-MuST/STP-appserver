@@ -15,7 +15,7 @@ import bcrypt #Ubuntu/Debian: apt-get install python-bcrypt
 from httperrs import NotAuthorizedError, ConflictError
 
 def gen_token():
-    return base64.b64encode(str(uuid.uuid4()))
+    return base64.urlsafe_b64encode(str(uuid.uuid4()))
 
 def token_auth(token, authdb):
     """Checks whether token is valid/existing in authdb and returns associated

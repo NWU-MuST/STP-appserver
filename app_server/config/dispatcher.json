@@ -36,7 +36,9 @@
 	    "/projects/uploadaudio" : { "method" : "service.projects.Projects.upload_audio",
 					  "parameters" : ["token", "projectid", "filename", "file"] },
 	    "/projects/saveproject" : { "method" : "service.projects.Projects.save_project",
-					  "parameters" : ["token", "projectid", "tasks"] }
+					  "parameters" : ["token", "projectid", "tasks"] },
+	    "/projects/diarizeaudio" : { "method" : "service.projects.Projects.diarize_audio",
+					 "parameters" : ["token", "projectid"] }
 	},
 
     	"GET" : {
