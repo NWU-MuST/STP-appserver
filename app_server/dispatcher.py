@@ -10,7 +10,6 @@ import cgi
 import cStringIO
 from logger import Logger
 
-
 class Dispatch:
 
     def __init__(self, config_file):
@@ -92,11 +91,22 @@ class Dispatch:
             Process GET resquest.
             Valid requests are: results, status, options
         """
-        uri = env['PATH_INFO']
-        if uri not in self._routing['GET']:
-            return '405 Method Not Allowed', json.dumps({'message' : 'GET does not support: %s' % uri})
-
         try:
+            uri = env['PATH_INFO']
+            if uri not in self._routing['GET']:
+                #Check whether this is a GET on a temporary "outgoing"
+                #URL. Ideally want base URL to determine module
+                #instead of this loop, but will have to fix such a
+                #convention on URL somewhere -- in config JSON?
+                for modu in self._config["TEMPIO_MODULES"]:
+                    module_hook = self._modules[modu]
+                    module_config = self._module_config[modu]
+                    module = module_hook(module_config)
+                    result = module.outgoing(env)
+                    print(result)
+                    if result: return ("200 OK", json.dumps(result))
+                return '405 Method Not Allowed', json.dumps({'message' : 'GET does not support: %s' % uri})                
+
             data = {}
             if len(env['QUERY_STRING']) != 0:
                 data = cgi.parse_qs(env['QUERY_STRING'])
@@ -174,4 +184,3 @@ class Dispatch:
             Shutdown the router and message queue
         """
         pass
-

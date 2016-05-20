@@ -206,6 +206,20 @@ class Project:
             print("User not logged in!")
         print('')
 
+    def diarizeaudio(self):
+        """
+            Make diarize request to split project into tasks
+        """
+        if self.user_token is not None and self.projectid is not None:
+            headers = {"Content-Type" : "application/json"}
+            data = {"token": self.user_token, "projectid" : self.projectid}
+            res = requests.post(BASEURL + "projects/diarizeaudio", headers=headers, data=json.dumps(data))
+            print('SERVER SAYS:', res.text)
+            print(res.status_code)
+        else:
+            print("User not logged in!")
+        print('')
+
 
 if __name__ == "__main__":
     print('Accessing Docker app server via: http://127.0.0.1:9999/wsgi/')
@@ -232,6 +246,7 @@ if __name__ == "__main__":
                 print("UPLOADAUDIO - upload audio to project")
                 print("PROJECTAUDIO - retrieve project audio")
                 print("SAVEPROJECT - save tasks to a project\n")
+                print("DIARIZEAUDIO - save tasks to a project\n")
                 print("EXIT - quit")
 
             else:

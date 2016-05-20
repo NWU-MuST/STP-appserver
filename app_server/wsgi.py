@@ -30,7 +30,7 @@ def application(env, start_response):
             f = open(response['filename'], 'rb')
             data = f.read()
             f.close()
-            response_header = [('Content-Type','audio/mp3'), ('Content-Length', str(len(data)))]
+            response_header = [('Content-Type', str(response["mime"])), ('Content-Length', str(len(data)))]
             start_response('200 OK', response_header)
             return [data]
         except Exception as e:

@@ -206,21 +206,22 @@ class Projects(auth.UserAuth):
             if entry is None:
                 db_conn.commit()
                 raise NotFoundError("Project not found")
-            #Project clean?
+            #Project clean? #DEMIT: Also check whether already split into tasks?
             projid, projname, projcat, username, audiofile, year, creation, jobid, errstatus = entry
             if jobid:
                 db_conn.commit()
                 raise ConflictError("A job with id '{}' is already pending on this project".format(jobid))
+            
             #Setup I/O access
             inurl = auth.gen_token()
             outurl = auth.gen_token()
             db_curs.execute("UPDATE projects SET jobid=? WHERE projectid=?", ("pending",
                                                                               request["projectid"]))
-            db_curs.execute("INSERT INTO incoming (projectid, url) VALUES (?,?,?,?,?,?)", (request["projectid"],
-                                                                                           inurl))
-            db_curs.execute("INSERT INTO outgoing (projectid, url, audiofile) VALUES (?,?,?,?,?,?)", (request["projectid"],
-                                                                                                      outurl,
-                                                                                                      audiofile))
+            db_curs.execute("INSERT INTO incoming (projectid, url) VALUES (?,?)", (request["projectid"],
+                                                                                   inurl))
+            db_curs.execute("INSERT INTO outgoing (projectid, url, audiofile) VALUES (?,?,?)", (request["projectid"],
+                                                                                                outurl,
+                                                                                                audiofile))
             db_conn.commit()
         #Make job request
         jobreq = {"input": outurl, "output": inurl}
@@ -242,7 +243,24 @@ class Projects(auth.UserAuth):
             db_curs.execute("DELETE FROM outgoing WHERE projectid=?", (request["projectid"],))
             db_conn.commit()
         return reqstatus #DEMIT TODO: translate error from speech server!
-  
+
+    def outgoing(self, env):
+        uri = os.path.basename(env['PATH_INFO'])
+        with sqlite.connect(self._config['projectdb']) as db_conn:
+            db_curs = db_conn.cursor()
+            db_curs.execute("SELECT * FROM outgoing WHERE url=?", (uri,))
+            entry = db_curs.fetchone()
+            #URL exists?
+            if entry is None:
+                return None
+            projectid, url, audiofile = entry
+            db_curs.execute("DELETE FROM outgoing WHERE url=?", (uri,))
+            db_conn.commit()
+        return {"mime": "audio/ogg", "filename": audiofile}
+
+    def incoming(self, env):
+        uri = env['PATH_INFO']
+        raise NotImplementedError
             
 
 if __name__ == "__main__":
