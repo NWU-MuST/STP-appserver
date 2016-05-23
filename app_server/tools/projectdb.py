@@ -31,8 +31,9 @@ if __name__ == "__main__":
                                                                                           "creation REAL",
                                                                                           "jobid VARCHAR(36)",
                                                                                           "errstatus VARCHAR(128)"))
-    db_curs.execute("CREATE TABLE incoming ( {}, {} )".format("projectid VARCHAR(36) PRIMARY KEY",
-                                                              "url VARCHAR(128)"))
+    db_curs.execute("CREATE TABLE incoming ( {}, {}, {})".format("projectid VARCHAR(36) PRIMARY KEY",
+                                                                 "url VARCHAR(128)",
+                                                                 "tasktype VARCHAR(128)")) #DEMIT: rather want to use an enum here?
     db_curs.execute("CREATE TABLE outgoing ( {}, {}, {} )".format("projectid VARCHAR(36) PRIMARY KEY",
                                                                   "url VARCHAR(128)",
                                                                   "audiofile VARCHAR(128)"))

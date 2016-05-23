@@ -217,8 +217,9 @@ class Projects(auth.UserAuth):
             outurl = auth.gen_token()
             db_curs.execute("UPDATE projects SET jobid=? WHERE projectid=?", ("pending",
                                                                               request["projectid"]))
-            db_curs.execute("INSERT INTO incoming (projectid, url) VALUES (?,?)", (request["projectid"],
-                                                                                   inurl))
+            db_curs.execute("INSERT INTO incoming (projectid, url, tasktype) VALUES (?,?,?)", (request["projectid"],
+                                                                                               inurl,
+                                                                                               "diarize"))
             db_curs.execute("INSERT INTO outgoing (projectid, url, audiofile) VALUES (?,?,?)", (request["projectid"],
                                                                                                 outurl,
                                                                                                 audiofile))
@@ -258,9 +259,53 @@ class Projects(auth.UserAuth):
             db_conn.commit()
         return {"mime": "audio/ogg", "filename": audiofile}
 
+
     def incoming(self, env):
-        uri = env['PATH_INFO']
-        raise NotImplementedError
+        uri = os.path.basename(env['PATH_INFO'])
+        with sqlite.connect(self._config['projectdb']) as db_conn:
+            db_curs = db_conn.cursor()
+            db_curs.execute("SELECT * FROM incoming WHERE url=?", (uri,))
+            entry = db_curs.fetchone()
+        #URL exists?
+        if entry is None:
+            return None
+        projectid, url, tasktype = entry
+        assert tasktype in self._config["speechtasks"]
+        #DEMIT: This next piece of code is copied often (define function/refactor?)
+        data = {}
+        if 'multipart/form-data' not in env['CONTENT_TYPE']:
+            data = json.loads(env['wsgi.input'].read(int(env['CONTENT_LENGTH'])))
+        else:
+            (header, bound) = env['CONTENT_TYPE'].split('boundary=')
+            request_body_size = int(env.get('CONTENT_LENGTH', 0))
+            request_body = env['wsgi.input'].read(request_body_size)
+            form_raw = cgi.parse_multipart(cStringIO.StringIO(request_body), {'boundary': bound})
+            for key in form_raw.keys():
+                data[key] = form_raw[key][0]
+            print(data.keys())
+        #Switch to handler for "tasktype"
+        handler = getattr(self, "_incoming_{}".format(tasktype))
+        handler(projectid, data) #should throw exception if not successful
+        #Cleanup DB
+        with sqlite.connect(self._config['projectdb']) as db_conn:
+            db_curs = db_conn.cursor()
+            db_curs.execute("DELETE FROM incoming WHERE url=?", (uri,))
+            db_conn.commit()
+        return "Request successful!"
+
+
+    def _incoming_diarize(self, projectid, data):
+        with sqlite.connect(self._config['projectdb']) as db_conn:
+            db_curs = db_conn.cursor()
+            db_curs.execute("SELECT * FROM projects WHERE projectid=?", (projectid,))
+            entry = db_curs.fetchone()
+            #Need to check whether project exists?
+            projid, projname, projcat, username, audiofile, year, creation, jobid, errstatus = entry
+            db_curs.execute("DELETE FROM T{} WHERE projectid=?".format(year), (projectid,)) #assume already OK'ed
+            for starttime, endtime in data["segments"]:
+                db_curs.execute("INSERT INTO T{} (projectid, start, end) VALUES(?,?,?)".format(year),
+                                (projectid, starttime, endtime))
+            db_conn.commit()
             
 
 if __name__ == "__main__":

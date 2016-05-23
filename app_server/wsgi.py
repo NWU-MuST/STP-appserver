@@ -21,10 +21,15 @@ def app_shutdown():
 uwsgi.atexit = app_shutdown
 
 # Entry point
+
+#DEMIT: Need to revisit/review how Error Handling interacts with
+#dispatcher.py methods (exceptions vs returns)
 def application(env, start_response):
     print(env)
     if env['REQUEST_METHOD'] == 'GET':
         (status, response) = router.get(env)
+        #DEMIT: Error handling is broken here, if the above does not
+        #200 OK, then we fail with cryptic KeyError("filename") below:
         try:
             response = json.loads(response)
             f = open(response['filename'], 'rb')
@@ -41,6 +46,12 @@ def application(env, start_response):
 
     elif env['REQUEST_METHOD'] == 'POST':
         (status, response) = router.post(env)
+        response_header = [('Content-Type','application/json'), ('Content-Length', str(len(response)))]
+        start_response('200 OK', response_header)
+        return [response]
+
+    elif env['REQUEST_METHOD'] == 'PUT':
+        (status, response) = router.put(env)
         response_header = [('Content-Type','application/json'), ('Content-Length', str(len(response)))]
         start_response('200 OK', response_header)
         return [response]
