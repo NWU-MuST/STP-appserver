@@ -295,16 +295,23 @@ class Projects(auth.UserAuth):
 
 
     def _incoming_diarize(self, projectid, data):
+        assert data["projectid"] == projectid
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
             db_curs.execute("SELECT * FROM projects WHERE projectid=?", (projectid,))
             entry = db_curs.fetchone()
             #Need to check whether project exists?
             projid, projname, projcat, username, audiofile, year, creation, jobid, errstatus = entry
-            db_curs.execute("DELETE FROM T{} WHERE projectid=?".format(year), (projectid,)) #assume already OK'ed
-            for starttime, endtime in data["segments"]:
-                db_curs.execute("INSERT INTO T{} (projectid, start, end) VALUES(?,?,?)".format(year),
-                                (projectid, starttime, endtime))
+            if "segments" in data: #all went well
+                db_curs.execute("DELETE FROM T{} WHERE projectid=?".format(year), (projectid,)) #assume already OK'ed
+                for starttime, endtime in data["segments"]:
+                    db_curs.execute("INSERT INTO T{} (projectid, start, end) VALUES(?,?,?)".format(year),
+                                    (projectid, starttime, endtime))
+                db_curs.execute("UPDATE projects SET jobid=? WHERE projectid=?", (None, projectid))
+                db_curs.execute("UPDATE projects SET errstatus=? WHERE projectid=?", (None, projectid))
+            else: #"unlock" and recover error status
+                db_curs.execute("UPDATE projects SET jobid=? WHERE projectid=?", (None, projectid))
+                db_curs.execute("UPDATE projects SET errstatus=? WHERE projectid=?", (data["errstatus"], projectid))
             db_conn.commit()
             
 
