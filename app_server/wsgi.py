@@ -7,57 +7,108 @@ import sys
 import os
 import uwsgi
 import json
-from dispatcher import Dispatch
+import logging
+import logging.handlers
 
+from dispatcher import Dispatch
+from service.httperrs import *
+
+#SETUP LOGGING
+LOGNAME = "APP"
+LOGFNAME = os.path.join(os.getenv("PERSISTENT_FS"), "appserver.log")
+LOGLEVEL = logging.DEBUG
+try:
+    fmt = "%(asctime)s [%(levelname)s] %(name)s in %(funcName)s(): %(message)s"
+    LOG = logging.getLogger(LOGNAME)
+    formatter = logging.Formatter(fmt)
+    ofstream = logging.handlers.TimedRotatingFileHandler(LOGFNAME, when="D", interval=1, encoding="utf-8")
+    ofstream.setFormatter(formatter)
+    LOG.addHandler(ofstream)
+    LOG.setLevel(LOGLEVEL)
+    #If we want console output:
+    # console = logging.StreamHandler()
+    # console.setFormatter(formatter)
+    # LOG.addHandler(console)
+except Exception as e:
+    print("FATAL ERROR: Could not create logging instance: {}".format(e), file=sys.stderr)
+    sys.exit(1)
+
+#SETUP ROUTER
 router = Dispatch(os.environ['services_config'])
 router.load()
 
-# Perform cleanup when server shutdown
+#PERFORM CLEANUP WHEN SERVER SHUTDOWN
 def app_shutdown():
-    print('Shutting down subsystem instance...')
+    LOG.info('Shutting down subsystem instance...')
     sys.stdout.flush()
     router.shutdown()
-
 uwsgi.atexit = app_shutdown
 
-# Entry point
+def build_json_response(data):
+    if type(data) is dict:
+        response = json.dumps(data)
+    else:
+        response = json.dumps({'message' : repr(data)})
+    response_header = [('Content-Type','application/json'), ('Content-Length', str(len(response)))]
+    return response, response_header
 
-#DEMIT: Need to revisit/review how Error Handling interacts with
-#dispatcher.py methods (exceptions vs returns)
+#ENTRY POINT
 def application(env, start_response):
-    print(env)
-    if env['REQUEST_METHOD'] == 'GET':
-        (status, response) = router.get(env)
-        #DEMIT: Error handling is broken here, if the above does not
-        #200 OK, then we fail with cryptic KeyError("filename") below:
-        try:
-            response = json.loads(response)
-            f = open(response['filename'], 'rb')
-            data = f.read()
-            f.close()
-            response_header = [('Content-Type', str(response["mime"])), ('Content-Length', str(len(data)))]
+    LOG.debug("Request: {}".format(env))
+    try:
+
+        if env['REQUEST_METHOD'] == 'GET':
+            d = router.get(env)
+            with open(d['filename'], 'rb') as infh:
+                data = infh.read()
+            response_header = [('Content-Type', str(d["mime"])), ('Content-Length', str(len(data)))]
             start_response('200 OK', response_header)
             return [data]
-        except Exception as e:
-            response = json.dumps({'message' : repr(e)})
-            response_header = [('Content-Type','application/json'), ('Content-Length', str(len(response)))]
-            start_response('500 Internal Server Error', response_header)
+
+        elif env['REQUEST_METHOD'] == 'POST':
+            d = router.post(env)
+            response, response_header = build_json_response(d)
+            start_response('200 OK', response_header)
             return [response]
 
-    elif env['REQUEST_METHOD'] == 'POST':
-        (status, response) = router.post(env)
-        response_header = [('Content-Type','application/json'), ('Content-Length', str(len(response)))]
-        start_response('200 OK', response_header)
-        return [response]
+        elif env['REQUEST_METHOD'] == 'PUT':
+            d = router.put(env)
+            response, response_header = build_json_response(d)
+            start_response('200 OK', response_header)
+            return [response]
 
-    elif env['REQUEST_METHOD'] == 'PUT':
-        (status, response) = router.put(env)
-        response_header = [('Content-Type','application/json'), ('Content-Length', str(len(response)))]
-        start_response('200 OK', response_header)
-        return [response]
+        else:
+            raise MethodNotAllowedError("Supported methods are: GET, POST or PUT")
 
-    else:
-        msg = json.dumps({'message' : 'Error: use either GET, POST'})
-        response_header = [('Content-Type','application/json'), ('Content-Length', str(len(msg)))]
-        start_response('405 Method Not Allowed', response_header)
-        return [msg]
+    except BadRequestError as e:
+        response, response_header = build_json_response(e)
+        start_response("400 Bad Request", response_header)
+        return [response]
+    except NotAuthorizedError as e:
+        response, response_header = build_json_response(e)
+        start_response("401 Not Authorized", response_header)
+        return [response]
+    except ForbiddenError as e:
+        response, response_header = build_json_response(e)
+        start_response("403 Forbidden", response_header)
+        return [response]
+    except NotFoundError as e:
+        response, response_header = build_json_response(e)
+        start_response("404 Not Found", response_header)
+        return [response]
+    except MethodNotAllowedError as e:
+        response, response_header = build_json_response(e)
+        start_response("405 Method Not Allowed", response_header)
+        return [response]
+    except ConflictError as e:
+        response, response_header = build_json_response(e)
+        start_response("409 Conflict", response_header)
+        return [response]
+    except TeapotError as e:
+        response, response_header = build_json_response(e)
+        start_response("418 I'm a teapot", response_header)
+        return [response]
+    except Exception as e:
+        response, response_header = build_json_response(e)
+        start_response('500 Internal Server Error', response_header)
+        return [response]

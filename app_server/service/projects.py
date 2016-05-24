@@ -17,7 +17,7 @@ try:
 except ImportError:
     from pysqlite2 import dbapi2 as sqlite #for old Python versions
 
-from httperrs import BadRequestError, NotFoundError
+from httperrs import *
 
 class Admin(admin.Admin):
     pass
@@ -76,7 +76,6 @@ class Projects(auth.UserAuth):
             " timestamp REAL, editorrw VARCHAR(1), collatorrw VARCHAR(1) )" % table_name)
             db_curs.execute(query)
             db_conn.commit()
-
         return {'projectid' : projectid}
 
     def list_projects(self, request):
@@ -91,7 +90,6 @@ class Projects(auth.UserAuth):
             db_curs = db_conn.cursor()
             db_curs.execute("SELECT * FROM projects where username='%s'" % username)
             projects = db_curs.fetchall()
-
         return {'projects' : projects}
 
     def delete_project(self, request):
@@ -148,7 +146,6 @@ class Projects(auth.UserAuth):
             db_curs.execute("DELETE FROM %s WHERE projectid='%s'" % (table_name, request["projectid"]))
             db_curs.executemany("INSERT INTO %s (projectid, editor, collator, start, end, textfile, timestamp, editorrw, collatorrw) VALUES(?,?,?,?,?,?,?,?,?)" % table_name, (task))
             db_conn.commit()
-
         return 'Project saved!'
 
     def upload_audio(self, request):
@@ -177,7 +174,6 @@ class Projects(auth.UserAuth):
             db_curs = db_conn.cursor()
             db_curs.execute("UPDATE projects SET audiofile = '%s' WHERE projectid='%s'" % (new_filename, request["projectid"]))
             db_conn.commit()
-
         return 'Audio Saved!'
 
     def project_audio(self, request):
@@ -190,7 +186,6 @@ class Projects(auth.UserAuth):
             db_curs = db_conn.cursor()
             db_curs.execute("SELECT audiofile FROM projects WHERE projectid='%s'" % request["projectid"])
             audiofile = db_curs.fetchone()
-
         return {'filename' : audiofile[0]}
 
     def diarize_audio(self, request):
@@ -245,47 +240,34 @@ class Projects(auth.UserAuth):
             db_conn.commit()
         return reqstatus #DEMIT TODO: translate error from speech server!
 
-    def outgoing(self, env):
-        uri = os.path.basename(env['PATH_INFO'])
+    def outgoing(self, uri):
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
             db_curs.execute("SELECT * FROM outgoing WHERE url=?", (uri,))
             entry = db_curs.fetchone()
             #URL exists?
             if entry is None:
-                return None
+                raise MethodNotAllowedError(uri)
             projectid, url, audiofile = entry
             db_curs.execute("DELETE FROM outgoing WHERE url=?", (uri,))
             db_conn.commit()
         return {"mime": "audio/ogg", "filename": audiofile}
 
 
-    def incoming(self, env):
-        uri = os.path.basename(env['PATH_INFO'])
+    def incoming(self, uri, data):
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
             db_curs.execute("SELECT * FROM incoming WHERE url=?", (uri,))
             entry = db_curs.fetchone()
         #URL exists?
         if entry is None:
-            return None
+            raise MethodNotAllowedError(uri)
         projectid, url, tasktype = entry
-        assert tasktype in self._config["speechtasks"]
-        #DEMIT: This next piece of code is copied often (define function/refactor?)
-        data = {}
-        if 'multipart/form-data' not in env['CONTENT_TYPE']:
-            data = json.loads(env['wsgi.input'].read(int(env['CONTENT_LENGTH'])))
-        else:
-            (header, bound) = env['CONTENT_TYPE'].split('boundary=')
-            request_body_size = int(env.get('CONTENT_LENGTH', 0))
-            request_body = env['wsgi.input'].read(request_body_size)
-            form_raw = cgi.parse_multipart(cStringIO.StringIO(request_body), {'boundary': bound})
-            for key in form_raw.keys():
-                data[key] = form_raw[key][0]
-            print(data.keys())
         #Switch to handler for "tasktype"
+        assert tasktype in self._config["speechtasks"], "tasktype '{}' not supported...".format(tasktype)
+        assert data["projectid"] == projectid, "Unexpected Project ID..."
         handler = getattr(self, "_incoming_{}".format(tasktype))
-        handler(projectid, data) #should throw exception if not successful
+        handler(data) #should throw exception if not successful
         #Cleanup DB
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
@@ -294,8 +276,8 @@ class Projects(auth.UserAuth):
         return "Request successful!"
 
 
-    def _incoming_diarize(self, projectid, data):
-        assert data["projectid"] == projectid
+    def _incoming_diarize(self, data):
+        projectid = data["projectid"]
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
             db_curs.execute("SELECT * FROM projects WHERE projectid=?", (projectid,))

@@ -10,17 +10,22 @@ class BadRequestError(Exception):
     pass
 
 class NotAuthorizedError(Exception):
-    """ Intended to map to "HTTP 401 Not Found"
+    """ Intended to map to "HTTP 401 Not Authorized"
     """
     pass
 
 class ForbiddenError(Exception):
-    """ Intended to map tox "HTTP 403 Not Found"
+    """ Intended to map tox "HTTP 403 Forbidden"
     """
     pass
 
 class NotFoundError(Exception):
     """ Intended to map to "HTTP 404 Not Found"
+    """
+    pass
+
+class MethodNotAllowedError(Exception):
+    """ Intended to map to "HTTP 405 Method Not Allowed"
     """
     pass
 
@@ -33,3 +38,4 @@ class TeapotError(Exception):
     """ Intended to map to "HTTP 418 I'm a teapot"
     """
     pass
+

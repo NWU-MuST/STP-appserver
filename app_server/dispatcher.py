@@ -8,7 +8,11 @@ import os
 import codecs
 import cgi
 import cStringIO
-from logger import Logger
+import logging
+
+from service.httperrs import *
+
+LOG = logging.getLogger("APP.DISPATCHER")
 
 class Dispatch:
 
@@ -18,25 +22,15 @@ class Dispatch:
         self._modules = {}
         self._module_config = {}
         self._routing = {}
-        self._logger = None
 
     def load(self):
         """
             High-level services load
         """
-        self.init_logger()
+        LOG.info("Loading router...")
         self.load_config()
         self.clear_routing()
         self.load_handlers()
-
-    def init_logger(self):
-        """
-            Create logger
-        """
-        if self._logger is None:
-            self.__base_logger = Logger(self._config_file)
-            self.__base_logger.new_logger('App')
-            self._logger = self.__base_logger.get_logger('base')
 
     def _parse_module_name(self, module_handle):
         """
@@ -82,41 +76,42 @@ class Dispatch:
                 _data = {'module' : modu, 'method' : method, 'parameters' : self._config['HANDLERS'][http_method][uri]['parameters']}
                 self._routing[http_method][uri] = _data
 
-        print(self._modules)
-        print(self._module_config)
-        print(self._routing)
+        LOG.debug("Router modules: {}".format(self._modules))
+        LOG.debug("Router module config: {}".format(self._module_config))
+        LOG.debug("Router table: {}".format(self._routing))
 
     def get(self, env):
         """
-            Process GET resquest.
+            Process GET request.
             Valid requests are: results, status, options
         """
-        try:
-            uri = env['PATH_INFO']
-            if uri not in self._routing['GET']:
-                #Check whether this is a GET on a temporary "outgoing"
-                #URL. Ideally want base URL to determine module
-                #instead of this for-loop, but will have to fix such a
-                #convention on URL somewhere -- in config JSON?
-                for modu in self._config["TEMPIO_MODULES"]:
-                    module_hook = self._modules[modu]
-                    module_config = self._module_config[modu]
-                    module = module_hook(module_config)
-                    result = module.outgoing(env)
-                    print(result)
-                    if result: return ("200 OK", json.dumps(result))
-                return '405 Method Not Allowed', json.dumps({'message' : 'GET does not support: %s' % uri})                
+        data = {}
+        if len(env['QUERY_STRING']) != 0:
+            data = cgi.parse_qs(env['QUERY_STRING'])
+        for key in data:
+            data[key] = data[key][0]
 
-            data = {}
-            if len(env['QUERY_STRING']) != 0:
-                data = cgi.parse_qs(env['QUERY_STRING'])
-
-            for key in data:
-                data[key] = data[key][0]
-
+        uri = env['PATH_INFO']
+        if uri not in self._routing['GET']:
+            uri = os.path.basename(uri)
+            #Check whether this is a GET on a temporary "outgoing"
+            #URL.
+            #DEMIT: Ideally want base URL to determine module
+            #instead of this for-loop, but will have to fix such a
+            #convention on URL somewhere -- in config JSON?
+            for modu in self._config["TEMPIO_MODULES"]:
+                module_hook = self._modules[modu]
+                module_config = self._module_config[modu]
+                module = module_hook(module_config)
+                try:
+                    return module.outgoing(uri)
+                except MethodNotAllowedError:
+                    pass #raise below if all modules fail...
+            raise MethodNotAllowedError("GET does not support: {}".format(uri))
+        else:
             for parameter in self._routing['GET'][uri]['parameters']:
                 if parameter not in data:
-                    return '400 Bad Request', json.dumps({'message' : 'missing parameter in request body: %s' % parameter})
+                    raise BadRequestError('missing parameter in request body: %s' % parameter)
 
             module_name = self._routing['GET'][uri]['module']
             module_config = self._module_config[module_name]
@@ -132,88 +127,84 @@ class Dispatch:
             elif type(result) is dict:
                 dispatch_result.update(result)
             else:
-                raise Exception("Internal Server Error: Bad result type from service method")
-            return '200 OK', json.dumps(dispatch_result)
-
-        except Exception as e:
-            return '500 Internal Server Error', json.dumps({'message' : str(e)})
+                raise Exception("Bad result type from service method")
+            return dispatch_result
 
     def post(self, env):
         uri = env['PATH_INFO']
         if uri not in self._routing['POST']:
-            return '405 Method Not Allowed', json.dumps({'message' : 'POST does not support: %s' % uri})
+            raise MethodNotAllowedError('POST does not support: %s' % uri)
             
-        try:
-            data = {}
-            if 'multipart/form-data' not in env['CONTENT_TYPE']:
-                data = json.loads(env['wsgi.input'].read(int(env['CONTENT_LENGTH'])))
-            else:
-                (header, bound) = env['CONTENT_TYPE'].split('boundary=')
-                request_body_size = int(env.get('CONTENT_LENGTH', 0))
-                request_body = env['wsgi.input'].read(request_body_size)
-                form_raw = cgi.parse_multipart(cStringIO.StringIO(request_body), {'boundary': bound})
-                for key in form_raw.keys():
-                    data[key] = form_raw[key][0]
-                print(data.keys())
-            for parameter in self._routing['POST'][uri]['parameters']:
-                if parameter not in data:
-                    return '400 Bad Request', json.dumps({'message' : 'missing parameter in request body: %s' % parameter})
+        data = {}
+        if 'multipart/form-data' not in env['CONTENT_TYPE']:
+            data = json.loads(env['wsgi.input'].read(int(env['CONTENT_LENGTH'])))
+        else:
+            (header, bound) = env['CONTENT_TYPE'].split('boundary=')
+            request_body_size = int(env.get('CONTENT_LENGTH', 0))
+            request_body = env['wsgi.input'].read(request_body_size)
+            form_raw = cgi.parse_multipart(cStringIO.StringIO(request_body), {'boundary': bound})
+            for key in form_raw.keys():
+                data[key] = form_raw[key][0]
+            LOG.debug("Data keys: {}".format(data.keys()))
+        for parameter in self._routing['POST'][uri]['parameters']:
+            if parameter not in data:
+                raise BadRequestError('missing parameter in request body: %s' % parameter)
 
-            module_name = self._routing['POST'][uri]['module']
-            module_config = self._module_config[module_name]
-            module_hook = self._modules[module_name]
+        module_name = self._routing['POST'][uri]['module']
+        module_config = self._module_config[module_name]
+        module_hook = self._modules[module_name]
 
-            module = module_hook(module_config)
-            method = getattr(module, self._routing['POST'][uri]['method'])
+        module = module_hook(module_config)
+        method = getattr(module, self._routing['POST'][uri]['method'])
 
-            dispatch_result = dict()
-            result = method(data)
-            if type(result) in [str, unicode]:
-                dispatch_result["message"] = result
-            elif type(result) is dict:
-                dispatch_result.update(result)
-            else:
-                raise Exception("Internal Server Error: Bad result type from service method")
-            return '200 OK', json.dumps(dispatch_result)
-
-        except Exception as e:
-            return '400 Bad Request', json.dumps({'message' : str(e)})
+        dispatch_result = dict()
+        result = method(data)
+        if type(result) in [str, unicode]:
+            dispatch_result["message"] = result
+        elif type(result) is dict:
+            dispatch_result.update(result)
+        else:
+            raise Exception("Bad result type from service method")
+        return dispatch_result
 
     def put(self, env):
         """ Process PUT resquest.
         """
-        try:
-            uri = env['PATH_INFO']
-            if uri not in self._routing['PUT']:
-                #Check whether this is a PUT on a temporary "outgoing"
-                #URL. Ideally want base URL to determine module
-                #instead of this for-loop, but will have to fix such a
-                #convention on URL somewhere -- in config JSON?
-                for modu in self._config["TEMPIO_MODULES"]:
-                    module_hook = self._modules[modu]
-                    module_config = self._module_config[modu]
-                    module = module_hook(module_config)
-                    result = module.incoming(env)
-                    print(result)
-                    if result: return ("200 OK", json.dumps(result))
-                return '405 Method Not Allowed', json.dumps({'message' : 'PUT does not support: %s' % uri})                
+        #DEMIT: Refactor the following block? Almost exact copy of "post" method.
+        data = {}
+        if 'multipart/form-data' not in env['CONTENT_TYPE']:
+            data = json.loads(env['wsgi.input'].read(int(env['CONTENT_LENGTH'])))
+        else:
+            (header, bound) = env['CONTENT_TYPE'].split('boundary=')
+            request_body_size = int(env.get('CONTENT_LENGTH', 0))
+            request_body = env['wsgi.input'].read(request_body_size)
+            form_raw = cgi.parse_multipart(cStringIO.StringIO(request_body), {'boundary': bound})
+            for key in form_raw.keys():
+                data[key] = form_raw[key][0]
+            LOG.debug("Data keys: {}".format(data.keys()))
 
+        uri = env['PATH_INFO']
+        if uri not in self._routing['PUT']:
+            uri = os.path.basename(uri)
+            #Check whether this is a PUT on a temporary "outgoing"
+            #URL. Ideally want base URL to determine module
+            #instead of this for-loop, but will have to fix such a
+            #convention on URL somewhere -- in config JSON?
+            for modu in self._config["TEMPIO_MODULES"]:
+                module_hook = self._modules[modu]
+                module_config = self._module_config[modu]
+                module = module_hook(module_config)
+                try:
+                    return module.incoming(uri, data)
+                except MethodNotAllowedError:
+                    pass #raise below if all modules fail...
+            raise MethodNotAllowedError('PUT does not support: %s' % uri)
+
+        else:
             #DEMIT: Refactor the following blocks? Almost exact copy of "post" method.
-            data = {}
-            if 'multipart/form-data' not in env['CONTENT_TYPE']:
-                data = json.loads(env['wsgi.input'].read(int(env['CONTENT_LENGTH'])))
-            else:
-                (header, bound) = env['CONTENT_TYPE'].split('boundary=')
-                request_body_size = int(env.get('CONTENT_LENGTH', 0))
-                request_body = env['wsgi.input'].read(request_body_size)
-                form_raw = cgi.parse_multipart(cStringIO.StringIO(request_body), {'boundary': bound})
-                for key in form_raw.keys():
-                    data[key] = form_raw[key][0]
-                print(data.keys())
-
             for parameter in self._routing['PUT'][uri]['parameters']:
                 if parameter not in data:
-                    return '400 Bad Request', json.dumps({'message' : 'missing parameter in request body: %s' % parameter})
+                    raise BadRequestError('missing parameter in request body: %s' % parameter)
 
             module_name = self._routing['PUT'][uri]['module']
             module_config = self._module_config[module_name]
@@ -229,16 +220,5 @@ class Dispatch:
             elif type(result) is dict:
                 dispatch_result.update(result)
             else:
-                raise Exception("Internal Server Error: Bad result type from service method")
-            return '200 OK', json.dumps(dispatch_result)
-
-        except Exception as e:
-            return '500 Internal Server Error', json.dumps({'message' : str(e)})
-
-
-
-    def shutdown(self):
-        """
-            Shutdown the router and message queue
-        """
-        pass
+                raise Exception("Bad result type from service method")
+            return dispatch_result

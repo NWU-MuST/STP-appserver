@@ -16,7 +16,7 @@ RUN a2enmod proxy
 RUN useradd -ms /bin/bash dac
 ENV HOME=/home/dac
 #Next line should correspond to definitions in `app_server/config/*`
-ENV STP=/mnt/stp
+ENV PERSISTENT_FS=/mnt/stp
 WORKDIR $HOME
 
 #Install application server
@@ -26,6 +26,6 @@ RUN chown -R dac:dac source
 #Run application server
 USER root
 WORKDIR $HOME/source/stp/app_server
-CMD chown -R dac:dac $STP && \
+CMD chown -R dac:dac $PERSISTENT_FS && \
     /usr/sbin/apache2ctl start & \
     uwsgi --uid 1000 -l 2 -p 1  --enable-threads --plugin /usr/lib/uwsgi/plugins/python27_plugin.so --socket 127.0.0.1:9090 --wsgi-file wsgi.py  --env services_config=config/dispatcher.json
