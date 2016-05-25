@@ -3,5 +3,5 @@
   "storage": "/mnt/stp/storage",
   "toklife": 31536000,
   "categories": ["National Assembly", "NCOP", "Committees", "General"],
-  "speechtasks": {"diarize": "diarizeurl"}
+  "speechtasks": {"diarize": "jobs/addjob"}
 }

@@ -21,6 +21,7 @@ from httperrs import *
 
 LOG = logging.getLogger("APP.PROJECTS")
 SPEECHSERVER = os.getenv("SPEECHSERVER")
+APPSERVER = os.getenv("APPSERVER")
 
 class Admin(admin.Admin):
     pass
@@ -231,10 +232,13 @@ class Projects(auth.UserAuth):
                                                                                                 audiofile))
             db_conn.commit()
         #Make job request
-        jobreq = {"input": outurl, "output": inurl}
-        reqstatus = {"jobid": auth.gen_token()} #DEMIT: dummy call!
-        # reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config("speechtasks")["diarize"]), data=jobreq)
-
+        jobreq = {"token" : request["token"], "getaudio": os.path.join(APPSERVER, outurl), "postresult": os.path.join(APPSERVER, inurl), "service" : "diarize", "subsystem" : "default"}
+        #reqstatus = {"jobid": auth.gen_token()} #DEMIT: dummy call!
+        LOG.debug(os.path.join(SPEECHSERVER, self._config["speechtasks"]["diarize"]))
+        reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechtasks"]["diarize"]), data=json.dumps(jobreq))
+        reqstatus = reqstatus.json()
+        #TODO: handle return status
+        LOG.debug("{}".format(reqstatus))
         #Handle request status
         if "jobid" in reqstatus: #no error
             with sqlite.connect(self._config['projectdb']) as db_conn:
@@ -271,6 +275,7 @@ class Projects(auth.UserAuth):
 
 
     def incoming(self, uri, data):
+        LOG.debug("incoming_data: {}".format(data))
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
             db_curs.execute("SELECT * FROM incoming WHERE url=?", (uri,))
@@ -281,9 +286,9 @@ class Projects(auth.UserAuth):
         projectid, url, tasktype = entry
         #Switch to handler for "tasktype"
         assert tasktype in self._config["speechtasks"], "tasktype '{}' not supported...".format(tasktype)
-        assert data["projectid"] == projectid, "Unexpected Project ID..."
+        #assert data["projectid"] == projectid, "Unexpected Project ID..."
         handler = getattr(self, "_incoming_{}".format(tasktype))
-        handler(data) #should throw exception if not successful
+        handler(data, projectid) #should throw exception if not successful
         #Cleanup DB
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
@@ -293,18 +298,22 @@ class Projects(auth.UserAuth):
         return "Request successful!"
 
 
-    def _incoming_diarize(self, data):
-        projectid = data["projectid"]
+    def _incoming_diarize(self, data, projectid):
+        LOG.debug("_i_d")
+        #projectid = data["projectid"]
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
             db_curs.execute("SELECT * FROM projects WHERE projectid=?", (projectid,))
             entry = db_curs.fetchone()
             #Need to check whether project exists?
             projid, projname, projcat, username, audiofile, year, creation, jobid, errstatus = entry
-            if "segments" in data: #all went well
+            if "CTM" in data: #all went well
                 LOG.info("Diarisation success (Project ID: {}, Job ID: {})".format(projectid, jobid))
+                #Parse CTM file
+                segments = [line.split() for line in data["CTM"].splitlines()]
+                LOG.info("CTM parsing successful..")
                 db_curs.execute("DELETE FROM T{} WHERE projectid=?".format(year), (projectid,)) #assume already OK'ed
-                for starttime, endtime in data["segments"]:
+                for starttime, endtime in segments:
                     db_curs.execute("INSERT INTO T{} (projectid, start, end) VALUES(?,?,?)".format(year),
                                     (projectid, starttime, endtime))
                 db_curs.execute("UPDATE projects SET jobid=? WHERE projectid=?", (None, projectid))

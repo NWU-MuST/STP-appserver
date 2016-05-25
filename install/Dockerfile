@@ -17,7 +17,9 @@ RUN useradd -ms /bin/bash dac
 ENV HOME=/home/dac
 #Next line should correspond to definitions in `app_server/config/*`
 ENV PERSISTENT_FS=/mnt/stp
-ENV SPEECHSERVER=https://speechserv
+# Set the following on commandline
+#ENV SPEECHSERVER=http://10.0.0.3:9950/wsgi
+#ENV APPSERVER=http://10.0.0.3:9999/wsgi
 WORKDIR $HOME
 
 #Install application server
