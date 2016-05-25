@@ -5,7 +5,7 @@ MAINTAINER Daniel van Niekerk <dvn.demitasse@gmail.com>
 LABEL Description="Basic STP platform served over HTTP using Apache"
 
 #Install standard tools from Ubuntu repo
-RUN apt-get update && apt-get install -y apache2 libapache2-mod-proxy-uwsgi uwsgi uwsgi-plugin-python patch python python-bcrypt
+RUN apt-get update && apt-get install -y apache2 libapache2-mod-proxy-uwsgi uwsgi uwsgi-plugin-python patch python python-bcrypt python-requests
 
 #Configure Apache to forward requests (uWSGI)
 COPY stp/install/* /etc/apache2/sites-available/
@@ -17,6 +17,7 @@ RUN useradd -ms /bin/bash dac
 ENV HOME=/home/dac
 #Next line should correspond to definitions in `app_server/config/*`
 ENV PERSISTENT_FS=/mnt/stp
+ENV SPEECHSERVER=https://speechserv
 WORKDIR $HOME
 
 #Install application server

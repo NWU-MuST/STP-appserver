@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals, division, print_function #Py2
 
+import json
+import logging
 try:
     from sqlite3 import dbapi2 as sqlite
 except ImportError:
@@ -9,9 +11,10 @@ except ImportError:
 
 import bcrypt #Ubuntu/Debian: apt-get install python-bcrypt
 
-import json
 import auth
 from httperrs import BadRequestError, ConflictError, NotFoundError
+
+LOG = logging.getLogger("APP.ADMIN")
 
 def hashpassw(password):
     salt = bcrypt.gensalt()
@@ -39,14 +42,16 @@ class Admin(auth.UserAuth):
             raise ConflictError(e)
         except KeyError as e:
             raise BadRequestError(e)
+        LOG.info("Added new user: {}".format(request["username"]))
         return "User added"
 
     def del_user(self, request):
         auth.token_auth(request["token"], self._config["authdb"])
         with sqlite.connect(self._config["target_authdb"]) as db_conn:
             db_curs = db_conn.cursor()
-            db_curs.execute("DELETE FROM users WHERE username='%s'" % request["username"])
+            db_curs.execute("DELETE FROM users WHERE username=?", (request["username"],))
             db_conn.commit()
+        LOG.info("Deleted user: {}".format(request["username"]))
         return "User removed"
 
     def get_uinfo(self, request):
@@ -59,6 +64,7 @@ class Admin(auth.UserAuth):
                 raise NotFoundError("User not registered")
             else:
                 username, pwhash, salt, name, surname, email = entry
+                LOG.info("Returning info for user: {}".format(request["username"]))
                 return {"name": name, "surname": surname, "email": email}
 
     def update_user(self, request):
@@ -79,6 +85,7 @@ class Admin(auth.UserAuth):
                 db_curs.execute("UPDATE users SET pwhash=? WHERE username=?", (pwhash, request["username"]))
                 db_curs.execute("UPDATE users SET salt=? WHERE username=?", (salt, request["username"]))
             db_conn.commit()
+        LOG.info("Updated info for user: {}".format(request["username"]))
         return "User info updated"
 
     def get_users(self, request):
@@ -89,4 +96,5 @@ class Admin(auth.UserAuth):
             for entry in db_curs.execute("SELECT * FROM users"):
                 username, pwhash, salt, name, surname, email = entry
                 users[username] = {"name": name, "surname": surname, "email": email}
+        LOG.info("Returning user list")
         return users

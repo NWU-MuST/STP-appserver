@@ -8,16 +8,19 @@ import time
 import datetime
 import base64
 import os
-
-import auth
-import admin
-
+import requests
+import logging
 try:
     from sqlite3 import dbapi2 as sqlite
 except ImportError:
     from pysqlite2 import dbapi2 as sqlite #for old Python versions
 
+import auth
+import admin
 from httperrs import *
+
+LOG = logging.getLogger("APP.PROJECTS")
+SPEECHSERVER = os.getenv("SPEECHSERVER")
 
 class Admin(admin.Admin):
     pass
@@ -34,6 +37,7 @@ class Projects(auth.UserAuth):
             List Admin created project categories
         """
         username = auth.token_auth(request["token"], self._config["authdb"])
+        LOG.info("Returning list of project categories")
         return {'categories' : self._categories}
 
     def create_project(self, request):
@@ -76,6 +80,7 @@ class Projects(auth.UserAuth):
             " timestamp REAL, editorrw VARCHAR(1), collatorrw VARCHAR(1) )" % table_name)
             db_curs.execute(query)
             db_conn.commit()
+        LOG.info("Created new project with ID: {}".format(projectid))
         return {'projectid' : projectid}
 
     def list_projects(self, request):
@@ -88,8 +93,9 @@ class Projects(auth.UserAuth):
         with sqlite.connect(self._config['projectdb']) as db_conn:
             # Fetch all projects
             db_curs = db_conn.cursor()
-            db_curs.execute("SELECT * FROM projects where username='%s'" % username)
+            db_curs.execute("SELECT * FROM projects where username=?", (username,))
             projects = db_curs.fetchall()
+        LOG.info("Returning list of projects")
         return {'projects' : projects}
 
     def delete_project(self, request):
@@ -100,12 +106,13 @@ class Projects(auth.UserAuth):
 
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
-            db_curs.execute("SELECT * FROM projects WHERE projectid='%s'" % request["projectid"])
+            db_curs.execute("SELECT * FROM projects WHERE projectid=?", (request["projectid"],))
             project_info = db_curs.fetchall()
-            db_curs.execute("DELETE FROM projects WHERE projectid='%s'" % request["projectid"])
+            db_curs.execute("DELETE FROM projects WHERE projectid=?", (request["projectid"],))
             table_name = 'T%s' % project_info[0][-2]
-            db_curs.execute("DELETE FROM %s WHERE projectid='%s'" % (table_name, request["projectid"]))
+            db_curs.execute("DELETE FROM %s WHERE projectid=?" % table_name, (request["projectid"],))
             db_conn.commit()
+        LOG.info("Deleted project with ID: {}".format(request["projectid"]))
         return "Project deleted!"
 
     def load_project(self, request):
@@ -116,12 +123,13 @@ class Projects(auth.UserAuth):
 
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
-            db_curs.execute("SELECT * FROM projects WHERE projectid='%s'" % request["projectid"])
+            db_curs.execute("SELECT * FROM projects WHERE projectid=?", (request["projectid"],))
             project_info = db_curs.fetchall()
             table_name = 'T%s' % project_info[0][-2]
-            db_curs.execute("SELECT * FROM %s WHERE projectid='%s'" % (table_name, request["projectid"]))
+            db_curs.execute("SELECT * FROM %s WHERE projectid=?" % table_name, (request["projectid"],))
             task_info = db_curs.fetchall()
             db_conn.commit()
+        LOG.info("Returning loaded project with ID: {}".format(request["projectid"]))
         return {'project' : project_info, 'tasks' : task_info}
 
     def save_project(self, request):
@@ -132,7 +140,7 @@ class Projects(auth.UserAuth):
 
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
-            db_curs.execute("SELECT * FROM projects WHERE projectid='%s'" % request["projectid"])
+            db_curs.execute("SELECT * FROM projects WHERE projectid=?", (request["projectid"],))
             project_info = db_curs.fetchall()
             table_name = 'T%s' % project_info[0][-2]
             audiodir = os.path.dirname(project_info[0][-3])
@@ -143,9 +151,10 @@ class Projects(auth.UserAuth):
                 open(textfile, 'wb').close()
                 task.append((request["projectid"], editor, collator, float(start), float(end), textfile, time.time(), 'Y', 'N'))
 
-            db_curs.execute("DELETE FROM %s WHERE projectid='%s'" % (table_name, request["projectid"]))
+            db_curs.execute("DELETE FROM %s WHERE projectid=?" % table_name, (request["projectid"],))
             db_curs.executemany("INSERT INTO %s (projectid, editor, collator, start, end, textfile, timestamp, editorrw, collatorrw) VALUES(?,?,?,?,?,?,?,?,?)" % table_name, (task))
             db_conn.commit()
+        LOG.info("Saved project with ID: {}".format(request["projectid"]))
         return 'Project saved!'
 
     def upload_audio(self, request):
@@ -157,7 +166,7 @@ class Projects(auth.UserAuth):
 
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
-            db_curs.execute("SELECT audiofile FROM projects WHERE projectid='%s'" % request["projectid"])
+            db_curs.execute("SELECT audiofile FROM projects WHERE projectid=?", (request["projectid"],))
             audiofile = db_curs.fetchone()
             if audiofile is not None and audiofile[0] != '':
                 os.remove(audiofile[0])
@@ -172,8 +181,9 @@ class Projects(auth.UserAuth):
 
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
-            db_curs.execute("UPDATE projects SET audiofile = '%s' WHERE projectid='%s'" % (new_filename, request["projectid"]))
+            db_curs.execute("UPDATE projects SET audiofile=? WHERE projectid=?", (new_filename, request["projectid"]))
             db_conn.commit()
+        LOG.info("Audio uploaded for project ID: {}".format(request["projectid"]))
         return 'Audio Saved!'
 
     def project_audio(self, request):
@@ -184,8 +194,9 @@ class Projects(auth.UserAuth):
 
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
-            db_curs.execute("SELECT audiofile FROM projects WHERE projectid='%s'" % request["projectid"])
+            db_curs.execute("SELECT audiofile FROM projects WHERE projectid=?", (request["projectid"],))
             audiofile = db_curs.fetchone()
+        LOG.info("Returning audio for project ID: {}".format(request["projectid"]))
         return {'filename' : audiofile[0]}
 
     def diarize_audio(self, request):
@@ -222,6 +233,8 @@ class Projects(auth.UserAuth):
         #Make job request
         jobreq = {"input": outurl, "output": inurl}
         reqstatus = {"jobid": auth.gen_token()} #DEMIT: dummy call!
+        # reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config("speechtasks")["diarize"]), data=jobreq)
+
         #Handle request status
         if "jobid" in reqstatus: #no error
             with sqlite.connect(self._config['projectdb']) as db_conn:
@@ -229,6 +242,7 @@ class Projects(auth.UserAuth):
                 db_curs.execute("UPDATE projects SET jobid=? WHERE projectid=?", (reqstatus["jobid"],
                                                                                   request["projectid"]))
                 db_conn.commit()
+            LOG.info("Diarize audio request sent for project ID: {}, job ID: {}".format(request["projectid"], reqstatus["jobid"]))
             return "Request successful!"
         #Something went wrong: undo project setup
         with sqlite.connect(self._config['projectdb']) as db_conn:
@@ -238,6 +252,7 @@ class Projects(auth.UserAuth):
             db_curs.execute("DELETE FROM incoming WHERE projectid=?", (request["projectid"],))
             db_curs.execute("DELETE FROM outgoing WHERE projectid=?", (request["projectid"],))
             db_conn.commit()
+        LOG.info("Diarize audio request failed for project ID: {}".format(request["projectid"]))
         return reqstatus #DEMIT TODO: translate error from speech server!
 
     def outgoing(self, uri):
@@ -251,6 +266,7 @@ class Projects(auth.UserAuth):
             projectid, url, audiofile = entry
             db_curs.execute("DELETE FROM outgoing WHERE url=?", (uri,))
             db_conn.commit()
+        LOG.info("Returning audio for project ID: {}".format(projectid))
         return {"mime": "audio/ogg", "filename": audiofile}
 
 
@@ -273,6 +289,7 @@ class Projects(auth.UserAuth):
             db_curs = db_conn.cursor()
             db_curs.execute("DELETE FROM incoming WHERE url=?", (uri,))
             db_conn.commit()
+        LOG.info("Incoming data processed for project ID: {}".format(projectid))
         return "Request successful!"
 
 
@@ -285,6 +302,7 @@ class Projects(auth.UserAuth):
             #Need to check whether project exists?
             projid, projname, projcat, username, audiofile, year, creation, jobid, errstatus = entry
             if "segments" in data: #all went well
+                LOG.info("Diarisation success (Project ID: {}, Job ID: {})".format(projectid, jobid))
                 db_curs.execute("DELETE FROM T{} WHERE projectid=?".format(year), (projectid,)) #assume already OK'ed
                 for starttime, endtime in data["segments"]:
                     db_curs.execute("INSERT INTO T{} (projectid, start, end) VALUES(?,?,?)".format(year),
@@ -292,9 +310,12 @@ class Projects(auth.UserAuth):
                 db_curs.execute("UPDATE projects SET jobid=? WHERE projectid=?", (None, projectid))
                 db_curs.execute("UPDATE projects SET errstatus=? WHERE projectid=?", (None, projectid))
             else: #"unlock" and recover error status
+                LOG.info("Diarisation failure (Project ID: {}, Job ID: {})".format(projectid, jobid))
                 db_curs.execute("UPDATE projects SET jobid=? WHERE projectid=?", (None, projectid))
                 db_curs.execute("UPDATE projects SET errstatus=? WHERE projectid=?", (data["errstatus"], projectid))
             db_conn.commit()
+        LOG.info("Diarization result received successfully for project ID: {}".format(projectid))
+
             
 
 if __name__ == "__main__":

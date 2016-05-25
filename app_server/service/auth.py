@@ -5,6 +5,7 @@ from __future__ import unicode_literals, division, print_function #Py2
 import json
 import time
 import uuid, base64
+import logging
 try:
     from sqlite3 import dbapi2 as sqlite
 except ImportError:
@@ -13,6 +14,8 @@ except ImportError:
 import bcrypt #Ubuntu/Debian: apt-get install python-bcrypt
 
 from httperrs import NotAuthorizedError, ConflictError
+
+LOG = logging.getLogger("APP.AUTH")
 
 def gen_token():
     return base64.urlsafe_b64encode(str(uuid.uuid4()))
@@ -76,6 +79,7 @@ class UserAuth(object):
                                                                                            username,
                                                                                            time.time() + self._config["toklife"]))
             db_conn.commit()
+        LOG.info("User login: {}".format(request["username"]))
         return {"token": token}
 
     def logout(self, request):
@@ -84,8 +88,14 @@ class UserAuth(object):
         """
         with sqlite.connect(self._config["authdb"]) as db_conn:
             db_curs = db_conn.cursor()
-            db_curs.execute("DELETE FROM tokens WHERE token='%s'" % request["token"])
+            db_curs.execute("SELECT * FROM tokens WHERE token=?", (request["token"],))
+            entry = db_curs.fetchone()
+            if entry is None:
+                raise NotAuthorizedError("Token not valid")
+            token, username, expiry = entry
+            db_curs.execute("DELETE FROM tokens WHERE token=?",  (request["token"],))
             db_conn.commit()
+        LOG.info("User logout: {}".format(username))
         return "User logged out"
 
 def test():
