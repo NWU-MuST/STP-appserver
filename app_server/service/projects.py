@@ -232,7 +232,7 @@ class Projects(auth.UserAuth):
                                                                                                 audiofile))
             db_conn.commit()
         #Make job request
-        jobreq = {"token" : request["token"], "getaudio": os.path.join(APPSERVER, outurl), "postresult": os.path.join(APPSERVER, inurl), "service" : "diarize", "subsystem" : "default"}
+        jobreq = {"token" : request["token"], "getaudio": os.path.join(APPSERVER, outurl), "putresult": os.path.join(APPSERVER, inurl), "service" : "diarize", "subsystem" : "default"}
         #reqstatus = {"jobid": auth.gen_token()} #DEMIT: dummy call!
         LOG.debug(os.path.join(SPEECHSERVER, self._config["speechtasks"]["diarize"]))
         reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechtasks"]["diarize"]), data=json.dumps(jobreq))
