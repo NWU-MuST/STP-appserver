@@ -72,13 +72,13 @@ class Projects(auth.UserAuth):
             table_name = datetime.datetime.now().year
 
             # Insert new project into project master table
-            db_curs.execute("INSERT INTO projects (projectid, projectname, category, username, audiofile, year, creation) VALUES(?,?,?,?,?,?,?)",
-                 (projectid, request["projectname"], request["category"], username, "", table_name, time.time()))
+            db_curs.execute("INSERT INTO projects (projectid, projectname, category, username, audiofile, year, creation, jobid, errstatus, assigned) VALUES(?,?,?,?,?,?,?,?,?)",
+                 (projectid, request["projectname"], request["category"], username, "", table_name, time.time(), "", "", "N"))
 
             # Create project table
             query = ( "CREATE TABLE IF NOT EXISTS T%s "
-            "( projectid VARCHAR(36), editor VARCHAR(20), collator VARCHAR(20), start REAL, end REAL, textfile VARCHAR(64),"
-            " timestamp REAL, editorrw VARCHAR(1), collatorrw VARCHAR(1) )" % table_name)
+            "( taskid VARCHAR(36), projectid VARCHAR(36), editor VARCHAR(20), collator VARCHAR(20), start REAL, end REAL, textfile VARCHAR(64),"
+            " timestamp REAL, jobid VARCHAR(36), errstatus VARCHAR(128), editorrw VARCHAR(1), collatorrw VARCHAR(1) )" % table_name)
             db_curs.execute(query)
             db_conn.commit()
         LOG.info("Created new project with ID: {}".format(projectid))
@@ -148,12 +148,18 @@ class Projects(auth.UserAuth):
 
             task = []
             for editor, collator, start, end in request["tasks"]:
-                textfile = os.path.join(audiodir, base64.urlsafe_b64encode(str(uuid.uuid4())))
+                text_name = base64.urlsafe_b64encode(str(uuid.uuid4()))
+                location = os.path.join(audiodir, text_name)
+                if not os.path.exists(location): os.makedirs(location)
+                textfile = os.path.join(location, text_name)
                 open(textfile, 'wb').close()
-                task.append((request["projectid"], editor, collator, float(start), float(end), textfile, time.time(), 'Y', 'N'))
+                taskid = str(uuid.uuid4())
+                while taskid in projects: taskid = str(uuid.uuid4())
+                taskid = 't%s' % taskid.replace('-', '')
+                task.append((taskid, request["projectid"], editor, collator, float(start), float(end), textfile, time.time(), "", "", "Y", "N"))
 
             db_curs.execute("DELETE FROM %s WHERE projectid=?" % table_name, (request["projectid"],))
-            db_curs.executemany("INSERT INTO %s (projectid, editor, collator, start, end, textfile, timestamp, editorrw, collatorrw) VALUES(?,?,?,?,?,?,?,?,?)" % table_name, (task))
+            db_curs.executemany("INSERT INTO %s (taskid, projectid, editor, collator, start, end, textfile, timestamp, jobid, errstatus, editorrw, collatorrw) VALUES(?,?,?,?,?,?,?,?,?,?,?)" % table_name, (task))
             db_conn.commit()
         LOG.info("Saved project with ID: {}".format(request["projectid"]))
         return 'Project saved!'
@@ -172,7 +178,8 @@ class Projects(auth.UserAuth):
             if audiofile is not None and audiofile[0] != '':
                 os.remove(audiofile[0])
 
-        location = os.path.join(self._config["storage"], datetime.datetime.now().strftime('%Y-%m-%d'), username)
+        date_now = datetime.datetime.now()
+        location = os.path.join(self._config["storage"], username, date_now.year, date_now.month, date_now.day)
         if not os.path.exists(location):
             os.makedirs(location)
 
@@ -232,7 +239,8 @@ class Projects(auth.UserAuth):
                                                                                                 audiofile))
             db_conn.commit()
         #Make job request
-        jobreq = {"token" : request["token"], "getaudio": os.path.join(APPSERVER, outurl), "putresult": os.path.join(APPSERVER, inurl), "service" : "diarize", "subsystem" : "default"}
+        jobreq = {"token" : request["token"], "getaudio": os.path.join(APPSERVER, outurl),
+            "putresult": os.path.join(APPSERVER, inurl), "service" : "diarize", "subsystem" : "default"}
         #reqstatus = {"jobid": auth.gen_token()} #DEMIT: dummy call!
         LOG.debug(os.path.join(SPEECHSERVER, self._config["speechtasks"]["diarize"]))
         reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechtasks"]["diarize"]), data=json.dumps(jobreq))
@@ -314,8 +322,12 @@ class Projects(auth.UserAuth):
                 LOG.info("CTM parsing successful..")
                 db_curs.execute("DELETE FROM T{} WHERE projectid=?".format(year), (projectid,)) #assume already OK'ed
                 for starttime, endtime in segments:
-                    db_curs.execute("INSERT INTO T{} (projectid, start, end) VALUES(?,?,?)".format(year),
-                                    (projectid, starttime, endtime))
+                    taskid = str(uuid.uuid4())
+                    while taskid in projects:
+                        taskid = str(uuid.uuid4())
+                    taskid = 't%s' % taskid.replace('-', '')
+                    db_curs.execute("INSERT INTO T{} (taskid, projectid, start, end) VALUES(?,?,?,?)".format(year),
+                                    (taskid, projectid, starttime, endtime))
                 db_curs.execute("UPDATE projects SET jobid=? WHERE projectid=?", (None, projectid))
                 db_curs.execute("UPDATE projects SET errstatus=? WHERE projectid=?", (None, projectid))
             else: #"unlock" and recover error status
@@ -325,7 +337,18 @@ class Projects(auth.UserAuth):
             db_conn.commit()
         LOG.info("Diarization result received successfully for project ID: {}".format(projectid))
 
-            
+    def assign_tasks(self, request):
+        """
+            Assign tasks to editors
+            - No revert from this point
+        """
+        raise NotImplementedError
+
+    def update_assignee(self, request):
+        """
+            Re-assign editor
+        """
+        raise NotImplementedError
 
 if __name__ == "__main__":
     pass

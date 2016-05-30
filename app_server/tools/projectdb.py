@@ -22,7 +22,7 @@ if __name__ == "__main__":
     
     db_conn = sqlite.connect(outfn)
     db_curs = db_conn.cursor()
-    db_curs.execute("CREATE TABLE projects ( {}, {}, {}, {}, {}, {}, {}, {}, {} )".format("projectid VARCHAR(36) PRIMARY KEY",
+    db_curs.execute("CREATE TABLE projects ( {}, {}, {}, {}, {}, {}, {}, {}, {}, {} )".format("projectid VARCHAR(36) PRIMARY KEY",
                                                                                           "projectname VARCHAR(32)",
                                                                                           "category VARCHAR(36)",
                                                                                           "username VARCHAR(20)",
@@ -30,7 +30,8 @@ if __name__ == "__main__":
                                                                                           "year INTEGER",
                                                                                           "creation REAL",
                                                                                           "jobid VARCHAR(36)",
-                                                                                          "errstatus VARCHAR(128)"))
+                                                                                          "errstatus VARCHAR(128)",
+                                                                                          "assigned VARCHAR(1)")
     db_curs.execute("CREATE TABLE incoming ( {}, {}, {})".format("projectid VARCHAR(36) PRIMARY KEY",
                                                                  "url VARCHAR(128)",
                                                                  "tasktype VARCHAR(128)")) #DEMIT: rather want to use an enum here?

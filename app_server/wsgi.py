@@ -9,6 +9,8 @@ import uwsgi
 import json
 import logging
 import logging.handlers
+import subprocess
+import datetime
 
 from dispatcher import Dispatch
 from service.httperrs import *
@@ -52,6 +54,14 @@ def build_json_response(data):
     response_header = [('Content-Type','application/json'), ('Content-Length', str(len(response)))]
     return response, response_header
 
+def fix_oggsplt_time(realtime)
+    dt = datetime.timedelta(seconds=float(realtime))
+    dts = str(dt)
+    (hour, minute, second) = dts.split(":")
+    minute = 60.0 * float(hour) + float(minute)
+    second = float(second)
+    return "%s.%s" % (minute, second)
+
 #ENTRY POINT
 def application(env, start_response):
     LOG.debug("Request: {}".format(env))
@@ -59,8 +69,23 @@ def application(env, start_response):
 
         if env['REQUEST_METHOD'] == 'GET':
             d = router.get(env)
-            with open(d['filename'], 'rb') as infh:
-                data = infh.read()
+            data = None
+            if 'range' not in d:
+                with open(d['filename'], 'rb') as infh:
+                    data = infh.read()
+            else:
+                (start, end) = d['range']
+                start = fix_oggsplt_time(start)
+                end = fix_oggsplt_time(end)
+                cmd = "oggsplt {} {} {} -o -".format(d["filename"], start, end)
+                p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
+                (child_stdout, child_stderr) = (p.stdout, p.stderr)
+                data = child_stdout.read()
+                err = child_stderr.read()
+                if len(err) != 0:
+                    LOG.error(err)
+                    raise RuntimeError("Cannot supply task's audio data!")
+
             response_header = [('Content-Type', str(d["mime"])), ('Content-Length', str(len(data)))]
             start_response('200 OK', response_header)
             return [data]
@@ -108,7 +133,12 @@ def application(env, start_response):
         response, response_header = build_json_response(e)
         start_response("418 I'm a teapot", response_header)
         return [response]
+    except NotImplementedError as e:
+        response, response_header = build_json_response(e)
+        start_response("501 Not Implemented", response_header)
+        return [response]
     except Exception as e:
         response, response_header = build_json_response(e)
-        start_response('500 Internal Server Error', response_header)
+        start_response("500 Internal Server Error", response_header)
         return [response]
+
