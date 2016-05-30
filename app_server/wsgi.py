@@ -108,7 +108,12 @@ def application(env, start_response):
         response, response_header = build_json_response(e)
         start_response("418 I'm a teapot", response_header)
         return [response]
+    except NotImplementedError as e:
+        response, response_header = build_json_response(e)
+        start_response("501 Not Implemented", response_header)
+        return [response]
     except Exception as e:
         response, response_header = build_json_response(e)
-        start_response('500 Internal Server Error', response_header)
+        start_response("500 Internal Server Error", response_header)
         return [response]
+
