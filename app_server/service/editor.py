@@ -64,6 +64,8 @@ class Editor(auth.UserAuth):
                 table_name = 'T%s' % table_name
                 db_curs.execute("SELECT * FROM ? WHERE editor=?", (table_name, this_user))
                 _tmp = db_curs.fetchall()
+                #TODO: I don't think I should send the table name back
+                # This does not work with style
                 _tmp = [x + (table_name,) for x in _tmp]
                 raw_tasks.extend(_tmp)
 
@@ -124,6 +126,7 @@ class Editor(auth.UserAuth):
         with codecs.open(textfile[0], "w", "utf-8") as f:
             f.write(request["text"])
 
+    #TODO: can't generalise with projects.py - this version accesses the tasks table not project table
     def speech_job(self, request):
         """
             Diarize, Recognize or align audio
@@ -132,13 +135,13 @@ class Editor(auth.UserAuth):
 
         #Parse speech job
         if request["service"] not in self._config["speechservices"]:
-            raise NotFoundError("{} not supported. Options are: {}".format(request['service'], self._config["speechservices"))
+            raise NotFoundError("{} not supported. Options are: {}".format(request['service'], self._config["speechservices"]))
 
         #Attempt to "lock" project and create I/O access
-        with sqlite.connect(self._config['projectdb']) as db_conn:
+        with sqlite.connect(self._config['tasksdb']) as db_conn:
             db_curs = db_conn.cursor()
             db_curs.execute("BEGIN IMMEDIATE") #lock the db early...
-            db_curs.execute("SELECT * FROM projects WHERE projectid=?", (request["projectid"],))
+            db_curs.execute("SELECT * FROM projects WHERE taskid=?", (request["taskid"],))
             entry = db_curs.fetchone()
             #Project exists?
             if entry is None:
@@ -155,10 +158,11 @@ class Editor(auth.UserAuth):
             outurl = auth.gen_token()
             db_curs.execute("UPDATE projects SET jobid=? WHERE projectid=?", ("pending",
                                                                               request["projectid"]))
-            db_curs.execute("INSERT INTO incoming (projectid, url, tasktype) VALUES (?,?,?)", (request["projectid"],
+            #TODO: should change `projectid` to something more general
+            db_curs.execute("INSERT INTO incoming (projectid, url, tasktype) VALUES (?,?,?)", (request["taskid"],
                                                                                                inurl,
                                                                                                "diarize"))
-            db_curs.execute("INSERT INTO outgoing (projectid, url, audiofile) VALUES (?,?,?)", (request["projectid"],
+            db_curs.execute("INSERT INTO outgoing (projectid, url, audiofile) VALUES (?,?,?)", (request["taskid"],
                                                                                                 outurl,
                                                                                                 audiofile))
             db_conn.commit()
@@ -168,7 +172,7 @@ class Editor(auth.UserAuth):
 	    jobreq.update(self.config["speechservices"][request["service"])
 
         LOG.debug(os.path.join(SPEECHSERVER, self._config["speechservices"][request["service"]]))
-        reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechtasks"][request["service"]]["url"]), data=json.dumps(jobreq))
+        reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speech"][request["service"]]["url"]), data=json.dumps(jobreq))
         reqstatus = reqstatus.json()
         #TODO: handle return status
         LOG.debug("{}".format(reqstatus))
