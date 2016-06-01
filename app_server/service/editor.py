@@ -118,7 +118,7 @@ class Editor(auth.UserAuth):
         auth.token_auth(request["token"], self._config["authdb"])
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
-            db_curs.execute("SELECT textfile FROM %s WHERE taskid='%s'" % (request["tablename"], request["taskid"]))
+            db_curs.execute("SELECT textfile FROM ? WHERE taskid=?", (request["tablename"], request["taskid"]))
             textfile = db_curs.fetchone()
 
         with codecs.open(textfile[0], "w", "utf-8") as f:
@@ -128,8 +128,12 @@ class Editor(auth.UserAuth):
         """
             Diarize, Recognize or align audio
         """
-               auth.token_auth(request["token"], self._config["authdb"])
-        
+        auth.token_auth(request["token"], self._config["authdb"])
+
+        #Parse speech job
+        if request["service"] not in self._config["speechservices"]:
+            raise NotFoundError("{} not supported. Options are: {}".format(request['service'], self._config["speechservices"))
+
         #Attempt to "lock" project and create I/O access
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
@@ -160,10 +164,11 @@ class Editor(auth.UserAuth):
             db_conn.commit()
         #Make job request
         jobreq = {"token" : request["token"], "getaudio": os.path.join(APPSERVER, outurl),
-            "putresult": os.path.join(APPSERVER, inurl), "service" : "diarize", "subsystem" : "default"}
-        #reqstatus = {"jobid": auth.gen_token()} #DEMIT: dummy call!
-        LOG.debug(os.path.join(SPEECHSERVER, self._config["speechtasks"]["diarize"]))
-        reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechtasks"]["diarize"]), data=json.dumps(jobreq))
+            "putresult": os.path.join(APPSERVER, inurl)}
+	    jobreq.update(self.config["speechservices"][request["service"])
+
+        LOG.debug(os.path.join(SPEECHSERVER, self._config["speechservices"][request["service"]]))
+        reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechtasks"][request["service"]]["url"]), data=json.dumps(jobreq))
         reqstatus = reqstatus.json()
         #TODO: handle return status
         LOG.debug("{}".format(reqstatus))
