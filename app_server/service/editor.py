@@ -62,7 +62,7 @@ class Editor(auth.UserAuth):
             raw_tasks = []
             for year in years:
                 table_name = 'T%s' % table_name
-                db_curs.execute("SELECT * FROM %s WHERE editor = '%s'" % (table_name, this_user))
+                db_curs.execute("SELECT * FROM ? WHERE editor=?", (table_name, this_user))
                 _tmp = db_curs.fetchall()
                 _tmp = [x + (table_name,) for x in _tmp]
                 raw_tasks.extend(_tmp)
@@ -89,7 +89,7 @@ class Editor(auth.UserAuth):
             db_curs.execute("SELECT audiofile FROM projects")
             audiofile = db_curs.fetchone()
 
-            db_curs.execute("SELECT start, end FROM %s WHERE taskid='%s'" % (request["tablename"], request["taskid"]))
+            db_curs.execute("SELECT start, end FROM ? WHERE taskid=?", (request["tablename"], request["taskid"]))
             _tmp = db_curs.fetchone()
             audiorange = [float(_tmp[0][0]), float(_tmp[0][1])]
 
@@ -102,7 +102,7 @@ class Editor(auth.UserAuth):
         auth.token_auth(request["token"], self._config["authdb"])
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
-            db_curs.execute("SELECT textfile FROM %s WHERE taskid='%s'" % (request["tablename"], request["taskid"]))
+            db_curs.execute("SELECT textfile FROM ? WHERE taskid=?", (request["tablename"], request["taskid"]))
             textfile = db_curs.fetchone()
 
         with codecs.open(textfile[0], "r", "utf-8") as f:
