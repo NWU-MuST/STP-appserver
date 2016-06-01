@@ -58,7 +58,7 @@ def commit(workingdir, fbasename, message):
     filename = os.path.join(workingdir, fbasename)
     r.index.add([filename])
     c = r.index.commit(message)
-    return c.hexsha
+    return c.hexsha, c.committed_date
 
 
 def revert(workingdir, fbasename, commit_id, message=None):

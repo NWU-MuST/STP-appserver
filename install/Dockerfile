@@ -18,13 +18,17 @@ ENV HOME=/home/dac
 #Next line should correspond to definitions in `app_server/config/*`
 ENV PERSISTENT_FS=/mnt/stp
 # Set the following on commandline
-#ENV SPEECHSERVER=http://10.0.0.3:9950/wsgi
-#ENV APPSERVER=http://10.0.0.3:9999/wsgi
+# ENV SPEECHSERVER=http://10.0.0.3:9950/wsgi
+# ENV APPSERVER=http://10.0.0.3:9999/wsgi
 WORKDIR $HOME
 
 #Install application server
 COPY stp $HOME/source/stp/
 RUN chown -R dac:dac source
+
+#Need to set this for GitPython
+#See: https://home.regit.org/2014/05/playing-with-python-git/
+ENV USERNAME=dac
 
 #Run application server
 USER root

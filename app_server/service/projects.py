@@ -26,8 +26,9 @@ import repo
 from httperrs import *
 
 LOG = logging.getLogger("APP.PROJECTS")
-SPEECHSERVER = os.getenv("SPEECHSERVER")
-APPSERVER = os.getenv("APPSERVER")
+
+SPEECHSERVER = os.getenv("SPEECHSERVER"); assert SPEECHSERVER is not None
+APPSERVER = os.getenv("APPSERVER"); assert APPSERVER is not None
 
 class Admin(admin.Admin):
     pass
@@ -78,14 +79,16 @@ class Projects(auth.UserAuth):
             year = datetime.datetime.now().year
 
             # Insert new project into project master table
-            db_curs.execute("INSERT INTO projects (projectid, projectname, category, username, audiofile, year, creation, assigned) VALUES(?,?,?,?,?,?,?)",
+            db_curs.execute("INSERT INTO projects (projectid, projectname, category, username, audiofile, year, creation, assigned) VALUES(?,?,?,?,?,?,?,?)",
                             (projectid, request["projectname"], request["category"], username, "", year, time.time(), "N"))
 
             # Create project table
             table_name = "T{}".format(year)
             query = ( "CREATE TABLE IF NOT EXISTS {} ".format(table_name) +\
-                      "( taskid INTEGER, projectid VARCHAR(36), editor VARCHAR(20), collator VARCHAR(20), start REAL, end REAL, textfile VARCHAR(64), "
-                      "timestamp REAL, commitid VARCHAR(40), editorrw VARCHAR(1), collatorrw VARCHAR(1), jobid VARCHAR(36), errstatus VARCHAR(128) )")
+                      "( taskid INTEGER, projectid VARCHAR(36), editor VARCHAR(20), collator VARCHAR(20), "
+                      "start REAL, end REAL, language VARCHAR(20), "
+                      "textfile VARCHAR(64), creation REAL, modified REAL, commitid VARCHAR(40), "
+                      "ownership INTEGER, jobid VARCHAR(36), errstatus VARCHAR(128) )" )
             db_curs.execute(query)
             db_conn.commit()
         LOG.info("Created new project with ID: {}".format(projectid))
@@ -117,7 +120,7 @@ class Projects(auth.UserAuth):
             db_curs.execute("SELECT year "
                             "FROM projects "
                             "WHERE projectid=?", (request["projectid"],))
-            year = db_curs.fetchone()
+            year, = db_curs.fetchone()
             db_curs.execute("DELETE FROM projects "
                             "WHERE projectid=?", (request["projectid"],))
             table_name = "T{}".format(year)
@@ -134,19 +137,20 @@ class Projects(auth.UserAuth):
         auth.token_auth(request["token"], self._config["authdb"])
 
         with sqlite.connect(self._config['projectdb']) as db_conn:
+            db_conn.row_factory = sqlite.Row
             db_curs = db_conn.cursor()
-            db_curs.execute("SELECT year "
+            db_curs.execute("SELECT projectname, category, year "
                             "FROM projects "
                             "WHERE projectid=?", (request["projectid"],))
-            year = db_curs.fetchone()
-            table_name = "T{}".format(year)
-            db_curs.execute("SELECT * "
-                            "FROM {} ".format(table_name) +\
+            project = dict(db_curs.fetchone())
+            tasktable = "T{}".format(project["year"])
+            db_curs.execute("SELECT editor, collator, start, end, language "
+                            "FROM {} ".format(tasktable) +\
                             "WHERE projectid=?", (request["projectid"],))
-            task_info = db_curs.fetchall() #DEMIT: NEED TO CONVERT TO LIST OF DICTS
+            tasks = db_curs.fetchall()
             db_conn.commit()
         LOG.info("Returning loaded project with ID: {}".format(request["projectid"]))
-        return {'project' : project_info, 'tasks' : task_info}
+        return {'project' : dict(project), 'tasks' : map(dict, tasks)}
 
     def save_project(self, request):
         """Save the project state (assignments and task partitioning) in the
@@ -156,7 +160,7 @@ class Projects(auth.UserAuth):
            after assignment use `update_project`
         """
         auth.token_auth(request["token"], self._config["authdb"])
-
+        #DEMIT: Does the user also need to save other project meta-info (maybe in `update_project`)?
         #DEMIT: Need to check whether tasks have already been assigned
         #DEMIT: Check no jobid pending
         with sqlite.connect(self._config['projectdb']) as db_conn:
@@ -164,7 +168,7 @@ class Projects(auth.UserAuth):
             db_curs.execute("SELECT year "
                             "FROM projects "
                             "WHERE projectid=?", (request["projectid"],))
-            year = db_curs.fetchone()
+            year, = db_curs.fetchone()
             tasktable = "T{}".format(year)
 
             tasks_in = request["tasks"] #A list of dicts
@@ -172,14 +176,15 @@ class Projects(auth.UserAuth):
             tasks_in.sort(key=lambda x:x["start"])
             tasks_out = []
             for taskid, task in enumerate(tasks_in):
-                tasks_out.append((taskid, request["projectid"], task["editor"], task["collator"], float(task["start"]), float(task["end"])))
+                tasks_out.append((taskid, request["projectid"], task["editor"], task["collator"], float(task["start"]), float(task["end"]), task["language"]))
 
             db_curs.execute("DELETE FROM {} ".format(tasktable) +\
                             "WHERE projectid=?", (request["projectid"],))
             db_curs.executemany("INSERT INTO {} ".format(tasktable) +\
-                                "(taskid, projectid, editor, collator, start, end)"
-                                "VALUES(?,?,?,?,?,?)", (tasks_out,))
+                                "(taskid, projectid, editor, collator, start, end, language)"
+                                "VALUES(?,?,?,?,?,?,?)", tasks_out)
             db_conn.commit()
+
         LOG.info("Saved project with ID: {}".format(request["projectid"]))
         return 'Project saved!'
 
@@ -191,10 +196,11 @@ class Projects(auth.UserAuth):
             - Sets project state to `assigned` disallowing revision of task segments
         """
         auth.token_auth(request["token"], self._config["authdb"])
-        
+
         #DEMIT: Need to check whether tasks have already been assigned
         #DEMIT: Check no jobid/errstatus
         with sqlite.connect(self._config['projectdb']) as db_conn:
+            db_conn.row_factory = sqlite.Row
             db_curs = db_conn.cursor()
             db_curs.execute("SELECT audiofile, year "
                             "FROM projects "
@@ -205,30 +211,31 @@ class Projects(auth.UserAuth):
             db_curs.execute("SELECT * "
                             "FROM {} ".format(tasktable) +\
                             "WHERE projectid=?", (request["projectid"],))
-            tasks = db_curs.fetchall() #DEMIT: POSSIBLE TO CONVERT INTO DICT?
+            tasks = map(dict, db_curs.fetchall())
             
             #CREATE FILES AND UPDATE FIELDS
             #DEMIT: Todo - cleanup `audiodir` if necessary
             textname = "text"
             for task in tasks:
-                taskid, projectid, editor, collator, start, end, textfile, timestamp, commitid, editorrw, collatorrw, jobid, errstatus = task
-                textdir = os.path.join(audiodir, str(taskid).zfill(3))
+                textdir = os.path.join(audiodir, str(task["taskid"]).zfill(3))
                 os.makedirs(textdir)
                 repo.init(textdir)
-                textfile = os.path.join(textdir, textname)
-                open(textfile, "wb").close()
-                timestamp = time.time() #DEMIT: Maybe sync this with commit timestamp?
-                commitid = repo.commit(textdir, textname, "task assigned")
-                editorrw = "Y"
-                collatorrw = "N"
-                #Make sure all required fields are set and update table row                
-                task = [taskid, projectid, editor, collator, start, end, textfile, timestamp, commitid, editorrw, collatorrw, jobid, errstatus]
+                task["textfile"] = os.path.join(textdir, textname)
+                open(task["textfile"], "wb").close()
+                task["creation"] = time.time()
+                task["commitid"], task["modified"] = repo.commit(textdir, textname, "task assigned")
+                task["ownership"] = 0 #Actually need an ownership ENUM: {0: "editor", 1: "collator"}
+                #Make sure all required fields are set and update table row
                 undefined = (None, "")
-                assert all(e not in undefined for e in task[:-2]) #except `jobid` and `errstatus`
+                assert all(v not in undefined for k, v in task.iteritems() if k not in ["jobid", "errstatus"])
+                updatefields = ("editor", "collator", "textfile", "creation", "modified", "commitid", "ownership")
+                LOG.debug(tuple([task[k] for k in updatefields] + [task["projectid"], task["taskid"]]))
                 db_curs.execute("UPDATE {} ".format(tasktable) +\
-                                "SET taskid=?, projectid=?, editor=?, collator=?, start=?, end=?, textfile=?, timestamp=?, commitid=?, editorrw=?, collatorrw=?, jobid=?, errstatus=?" +\
-                                "WHERE projectid=? AND taskid=?", tuple(task + [projectid, taskid]))
+                                "SET {} ".format(", ".join(field +"=?" for field in updatefields)) +\
+                                "WHERE projectid=? AND taskid=?", tuple([task[k] for k in updatefields] + [task["projectid"], task["taskid"]]))
             db_conn.commit()
+        LOG.info("Assigned tasks for project with ID: {}".format(request["projectid"]))
+        return 'Project tasks assigned!'
 
     def update_project(self, request):
         """Update assignees and/or permissions on tasks and/or other project
@@ -252,7 +259,7 @@ class Projects(auth.UserAuth):
                 os.remove(audiofile[0])
 
         date_now = datetime.datetime.now()
-        location = os.path.join(self._config["storage"], username, date_now.year, date_now.month, date_now.day)
+        location = os.path.join(self._config["storage"], username, str(date_now.year), str(date_now.month).zfill(2), str(date_now.day).zfill(2), request["projectid"])
         if not os.path.exists(location):
             os.makedirs(location)
 
@@ -300,7 +307,6 @@ class Projects(auth.UserAuth):
             if jobid:
                 db_conn.commit()
                 raise ConflictError("A job with id '{}' is already pending on this project".format(jobid))
-            
             #Setup I/O access
             inurl = auth.gen_token()
             outurl = auth.gen_token()
@@ -309,7 +315,7 @@ class Projects(auth.UserAuth):
                             "WHERE projectid=?", ("pending",
                                                   request["projectid"]))
             db_curs.execute("INSERT INTO incoming "
-                            "(projectid, url, tasktype) VALUES (?,?,?)", (request["projectid"],
+                            "(projectid, url, servicetype) VALUES (?,?,?)", (request["projectid"],
                                                                           inurl,
                                                                           "diarize"))
             db_curs.execute("INSERT INTO outgoing "
@@ -318,12 +324,13 @@ class Projects(auth.UserAuth):
                                                                            audiofile))
             db_conn.commit()
         #Make job request
-        jobreq = {"token" : request["token"], "getaudio": os.path.join(APPSERVER, outurl),
-            "putresult": os.path.join(APPSERVER, inurl), "service" : "diarize", "subsystem" : "default"}
-        #reqstatus = {"jobid": auth.gen_token()} #DEMIT: dummy call!
-        LOG.debug(os.path.join(SPEECHSERVER, self._config["speechtasks"]["diarize"]))
-        reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechtasks"]["diarize"]), data=json.dumps(jobreq))
-        reqstatus = reqstatus.json()
+        # TEMPORARILY COMMENTED OUT FOR TESTING WITHOUT SPEECHSERVER:
+        # jobreq = {"token" : request["token"], "getaudio": os.path.join(APPSERVER, outurl),
+        #           "putresult": os.path.join(APPSERVER, inurl), "service" : "diarize", "subsystem" : "default"}
+        # LOG.debug(os.path.join(SPEECHSERVER, self._config["speechservices"]["diarize"]))
+        # reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]["diarize"]), data=json.dumps(jobreq))
+        # reqstatus = reqstatus.json()
+        reqstatus = {"jobid": auth.gen_token()} #DEMIT: dummy call for testing!
         #TODO: handle return status
         LOG.debug("{}".format(reqstatus))
         #Handle request status
@@ -372,18 +379,18 @@ class Projects(auth.UserAuth):
         LOG.debug("incoming_data: {}".format(data))
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
-            db_curs.execute("SELECT projectid, tasktype "
+            db_curs.execute("SELECT projectid, servicetype "
                             "FROM incoming "
                             "WHERE url=?", (uri,))
             entry = db_curs.fetchone()
         #URL exists?
         if entry is None:
             raise MethodNotAllowedError(uri)
-        projectid, tasktype = entry
-        #Switch to handler for "tasktype"
-        assert tasktype in self._config["speechtasks"], "tasktype '{}' not supported...".format(tasktype)
+        projectid, servicetype = entry
+        #Switch to handler for "servicetype"
+        assert servicetype in self._config["speechservices"], "servicetype '{}' not supported...".format(servicetype)
         #assert data["projectid"] == projectid, "Unexpected Project ID..."
-        handler = getattr(self, "_incoming_{}".format(tasktype))
+        handler = getattr(self, "_incoming_{}".format(servicetype))
         handler(data, projectid) #will throw exception if not successful
         #Cleanup DB
         with sqlite.connect(self._config['projectdb']) as db_conn:
@@ -406,27 +413,23 @@ class Projects(auth.UserAuth):
             entry = db_curs.fetchone()
             #Need to check whether project exists?
             year, jobid = entry
+            tasktable = "T{}".format(year)
             if "CTM" in data: #all went well
                 LOG.info("Diarisation success (Project ID: {}, Job ID: {})".format(projectid, jobid))
                 #Parse CTM file
-                segments = [line.split() for line in data["CTM"].splitlines()]
+                segments = [map(float, line.split()) for line in data["CTM"].splitlines()]
+                segments.sort(key=lambda x:x[0]) #by starttime
                 LOG.info("CTM parsing successful..")
                 tasktable = "T{}".format(year)
                 db_curs.execute("DELETE FROM {} ".format(tasktable) +\
                                 "WHERE projectid=?", (projectid,)) #assume already OK'ed
-                for starttime, endtime in segments:
-                    taskid = str(uuid.uuid4()) #DEMIT: Redo to be indices
-                    while taskid in projects:
-                        taskid = str(uuid.uuid4())
-                    taskid = 't%s' % taskid.replace('-', '')
-                    db_curs.execute("INSERT INTO T{} (taskid, projectid, start, end) VALUES(?,?,?,?)".format(year),
+                for taskid, (starttime, endtime) in enumerate(segments):
+                    db_curs.execute("INSERT INTO {} (taskid, projectid, start, end) VALUES(?,?,?,?)".format(tasktable),
                                     (taskid, projectid, starttime, endtime))
-                db_curs.execute("UPDATE projects SET jobid=? WHERE projectid=?", (None, projectid))
-                db_curs.execute("UPDATE projects SET errstatus=? WHERE projectid=?", (None, projectid))
+                db_curs.execute("UPDATE projects SET jobid=?, errstatus=? WHERE projectid=?", (None, None, projectid))
             else: #"unlock" and recover error status
                 LOG.info("Diarisation failure (Project ID: {}, Job ID: {})".format(projectid, jobid))
-                db_curs.execute("UPDATE projects SET jobid=? WHERE projectid=?", (None, projectid))
-                db_curs.execute("UPDATE projects SET errstatus=? WHERE projectid=?", (data["errstatus"], projectid))
+                db_curs.execute("UPDATE projects SET jobid=?, errstatus=? WHERE projectid=?", (None, data["errstatus"], projectid))
             db_conn.commit()
         LOG.info("Diarization result received successfully for project ID: {}".format(projectid))
 
