@@ -233,6 +233,7 @@ class Projects(auth.UserAuth):
                 db_curs.execute("UPDATE {} ".format(tasktable) +\
                                 "SET {} ".format(", ".join(field +"=?" for field in updatefields)) +\
                                 "WHERE projectid=? AND taskid=?", tuple([task[k] for k in updatefields] + [task["projectid"], task["taskid"]]))
+            db_curs.execute("UPDATE projects SET assigned=? WHERE projectid=?", ("Y", request["projectid"]))
             db_conn.commit()
         LOG.info("Assigned tasks for project with ID: {}".format(request["projectid"]))
         return 'Project tasks assigned!'
