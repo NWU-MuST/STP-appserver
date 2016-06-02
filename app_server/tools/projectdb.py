@@ -33,11 +33,14 @@ if __name__ == "__main__":
                                                                                               "jobid VARCHAR(36)",
                                                                                               "errstatus VARCHAR(128)"))
 
-    db_curs.execute("CREATE TABLE incoming ( {}, {}, {})".format("projectid VARCHAR(36) PRIMARY KEY",
+    db_curs.execute("CREATE TABLE incoming ( {}, {}, {}, {} )".format("projectid VARCHAR(36)",
+                                                                 "taskid INTEGER",
                                                                  "url VARCHAR(128)",
                                                                  "servicetype VARCHAR(128)"))
-    db_curs.execute("CREATE TABLE outgoing ( {}, {}, {} )".format("projectid VARCHAR(36) PRIMARY KEY",
+    db_curs.execute("CREATE TABLE outgoing ( {}, {}, {}, {}, {} )".format("projectid VARCHAR(36)",
                                                                   "url VARCHAR(128)",
-                                                                  "audiofile VARCHAR(128)"))
+                                                                  "audiofile VARCHAR(128)",
+                                                                  "start REAL",
+                                                                  "end REAL"))
     db_conn.commit()
 
