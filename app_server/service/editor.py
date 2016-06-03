@@ -62,7 +62,7 @@ class Editor(auth.UserAuth):
                 db_curs.execute("SELECT * FROM T{} WHERE editor=?".format(year["year"]), (this_user,))
 
                 _tmp = map(dict, db_curs.fetchall())
-                for x in _tmp: x.update({"year" : year["year"])
+                for x in _tmp: x.update({"year" : year["year"]})
                 raw_tasks.extend(_tmp)
 
             if len(raw_tasks) == 0:
@@ -81,7 +81,7 @@ class Editor(auth.UserAuth):
                      tasks["CANOPEN"].append(this_task)
                 else:
                     #TODO: should we raise a 500?
-                    this_task("errstatus") = "This task is malformed -- something went wrong"
+                    this_task["errstatus"] = "This task is malformed -- something went wrong"
                     tasks["ERROR"].append(this_task)
 
             return tasks
@@ -99,7 +99,7 @@ class Editor(auth.UserAuth):
 
             db_curs.execute("SELECT start, end FROM T{} WHERE taskid=? AND projectid=?".format(request["year"]), (request["taskid"], request["project"]))
             _tmp = dict(db_curs.fetchone())
-            audiorange = [float(_tmp["start"]), float(_tmp["end")]
+            audiorange = [float(_tmp["start"]), float(_tmp["end"])]
 
         return {"filename" : audiofile["audiofile"], "range" : audiorange, "mime" : "audio/ogg"}
 
@@ -183,9 +183,9 @@ class Editor(auth.UserAuth):
             #Setup I/O access
             inurl = auth.gen_token()
             outurl = auth.gen_token()
-            db_curs.execute("UPDATE T{} ".format(request["year"])
+            db_curs.execute("UPDATE T{} "
                             "SET jobid=? "
-                            "WHERE taskid=? AND projectid=?", ("pending",
+                            "WHERE taskid=? AND projectid=?".format(request["year"]), ("pending",
                                                   request["taskid"], request["projectid"]))
             db_curs.execute("INSERT INTO incoming "
                             "(projectid, url, servicetype) VALUES (?,?,?)", (request["projectid"],
@@ -210,9 +210,9 @@ class Editor(auth.UserAuth):
         if "jobid" in reqstatus: #no error
             with sqlite.connect(self._config['projectdb']) as db_conn:
                 db_curs = db_conn.cursor()
-                db_curs.execute("UPDATE T{} ".format(request["year"])
+                db_curs.execute("UPDATE T{} "
                                 "SET jobid=? "
-                                "WHERE taskid=? AND projectid=?", (reqstatus["jobid"],
+                                "WHERE taskid=? AND projectid=?".format(request["year"]), (reqstatus["jobid"],
                                                       request["taskid"], request["projectid"]))
                 db_conn.commit()
             LOG.info("Speech service request sent for project ID: {}, task ID: {}, job ID: {}".format(request["projectid"], request["taskid"], reqstatus["jobid"]))
@@ -388,6 +388,9 @@ class Editor(auth.UserAuth):
                 raise NotFoundError("Task not found")
             task = dict(task)
 
+            if task["jobid"] is None:
+                raise NotFoundError("No Job has been specified")
+
             #TODO: tell speech server to stop job
 
             db_curs.execute("UPDATE T{} SET jobid=?, errstatus=? WHERE taskid=? AND projectid=?".format(project["year"]),
@@ -396,4 +399,7 @@ class Editor(auth.UserAuth):
             db_curs.execute("DELETE FROM outgoing WHERE projectid=? AND audiofile=? AND start=? AND end=?",
                 (request["projectid"], project["audiofile"], task["start"], task["end"]))
             db_conn.commit()
+
+if __name__ == "__main__":
+    pass
 

@@ -54,13 +54,13 @@ def build_json_response(data):
     response_header = [('Content-Type','application/json'), ('Content-Length', str(len(response)))]
     return response, response_header
 
-def fix_oggsplt_time(realtime)
+def fix_oggsplt_time(realtime):
     dt = datetime.timedelta(seconds=float(realtime))
     dts = str(dt)
     (hour, minute, second) = dts.split(":")
     minute = 60.0 * float(hour) + float(minute)
     second = float(second)
-    return "%s.%s" % (minute, second)
+    return "{}.{}".format(minute, second)
 
 #ENTRY POINT
 def application(env, start_response):
