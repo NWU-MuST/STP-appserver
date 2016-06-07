@@ -196,51 +196,69 @@ class Projects(auth.UserAuth):
             - Sets project state to `assigned` disallowing revision of task segments
         """
         auth.token_auth(request["token"], self._config["authdb"])
+        db = sqlite.connect(self._config['projectdb'])
+        db.row_factory = sqlite.Row
 
-        #DEMIT: Need to check whether tasks have already been assigned
-        #DEMIT: Check no jobid/errstatus
-        with sqlite.connect(self._config['projectdb']) as db_conn:
-            db_conn.row_factory = sqlite.Row
-            db_curs = db_conn.cursor()
-            db_curs.execute("SELECT audiofile, year "
-                            "FROM projects "
-                            "WHERE projectid=?", (request["projectid"],))
-            audiofile, year = db_curs.fetchone()
-            audiodir = os.path.dirname(audiofile)
-            tasktable = "T{}".format(year)
-            db_curs.execute("SELECT * "
-                            "FROM {} ".format(tasktable) +\
-                            "WHERE projectid=?", (request["projectid"],))
-            tasks = map(dict, db_curs.fetchall())
-            
-            #CREATE FILES AND UPDATE FIELDS
-            #DEMIT: Todo - cleanup `audiodir` if necessary
-            textname = "text"
+        #CHECK PROJECTS DB IS UNLOCKED AND SANE
+        with db:
+            db.execute("BEGIN IMMEDIATE") #lock the db early...
+            row = db.execute("SELECT audiofile, year, assigned, jobid, errstatus"
+                             "FROM projects "
+                             "WHERE projectid=?",
+                             (request["projectid"],)).fetchone()
+            if row is None: #project exists?
+                raise NotFoundError("Project not found")
+            row = dict(row)
+            if row["jobid"]: #project clean?
+                raise ConflictError("This project is currently locked with status/jobid: {}".format(row["jobid"]))
+            elif row["errstatus"]:
+                raise ConflictError("A previous job resulted in error: '{}'".format(row["errstatus"]))
+            elif row["assigned"].upper() == "Y":
+                raise ConflictError("Tasks have already been assigned")
+            #Fetch tasks:
+            tasktable = "T{}".format(row["year"])
+            tasks = map(dict, db.execute("SELECT * "
+                                         "FROM {} ".format(tasktable) +\
+                                         "WHERE projectid=?", (request["projectid"],)))
+            #Lock the project:
+            db.execute("UPDATE projects "
+                       "SET jobid=? "
+                       "WHERE projectid=?", ("assign_tasks",
+                                             request["projectid"]))
+
+        #CREATE FILES AND UPDATE FIELDS
+        textname = "text"
+        updatefields = ("editor", "collator", "textfile", "creation", "modified", "commitid", "ownership")
+        audiodir = os.path.dirname(row["audiofile"])
+        for task in tasks:
+            textdir = os.path.join(audiodir, str(task["taskid"]).zfill(3))
+            os.makedirs(textdir) #should succeed...
+            repo.init(textdir)
+            task["textfile"] = os.path.join(textdir, textname)
+            open(task["textfile"], "wb").close()
+            task["commitid"], task["creation"] = repo.commit(textdir, textname, "task assigned")
+            task["modified"] = task["creation"]
+            task["ownership"] = 0 #Actually need an ownership ENUM: {0: "editor", 1: "collator"}
+            #Make sure all required fields are set
+            undefined = (None, "")
+            assert all(v not in undefined for k, v in task.iteritems() if k not in ["jobid", "errstatus"])
+        
+        #COMMIT FIELDS AND UNLOCK PROJECT
+        with db:
             for task in tasks:
-                textdir = os.path.join(audiodir, str(task["taskid"]).zfill(3))
-                os.makedirs(textdir)
-                repo.init(textdir)
-                task["textfile"] = os.path.join(textdir, textname)
-                open(task["textfile"], "wb").close()
-                task["creation"] = time.time()
-                task["commitid"], task["modified"] = repo.commit(textdir, textname, "task assigned")
-                task["ownership"] = 0 #Actually need an ownership ENUM: {0: "editor", 1: "collator"}
-                #Make sure all required fields are set and update table row
-                undefined = (None, "")
-                assert all(v not in undefined for k, v in task.iteritems() if k not in ["jobid", "errstatus"])
-                updatefields = ("editor", "collator", "textfile", "creation", "modified", "commitid", "ownership")
-                LOG.debug(tuple([task[k] for k in updatefields] + [task["projectid"], task["taskid"]]))
-                db_curs.execute("UPDATE {} ".format(tasktable) +\
-                                "SET {} ".format(", ".join(field +"=?" for field in updatefields)) +\
-                                "WHERE projectid=? AND taskid=?", tuple([task[k] for k in updatefields] + [task["projectid"], task["taskid"]]))
-            db_curs.execute("UPDATE projects SET assigned=? WHERE projectid=?", ("Y", request["projectid"]))
-            db_conn.commit()
+                db.execute("UPDATE {} ".format(tasktable) +\
+                           "SET {} ".format(", ".join(field +"=?" for field in updatefields)) +\
+                           "WHERE projectid=? AND taskid=?",
+                           tuple([task[k] for k in updatefields] + [task["projectid"], task["taskid"]]))
+                db.execute("UPDATE projects "
+                           "SET assigned=?, jobid=? "
+                           "WHERE projectid=?", ("Y", None, request["projectid"]))
         LOG.info("Assigned tasks for project with ID: {}".format(request["projectid"]))
         return 'Project tasks assigned!'
 
     def update_project(self, request):
         """Update assignees and/or permissions on tasks and/or other project
-           meta information
+           meta information. Can only be run after task assignment.
         """
         raise NotImplementedError
 
@@ -308,12 +326,12 @@ class Projects(auth.UserAuth):
             if jobid:
                 db_conn.commit()
                 raise ConflictError("A job with id '{}' is already pending on this project".format(jobid))
-            #Setup I/O access
+            #Lock the project and setup I/O access
             inurl = auth.gen_token()
             outurl = auth.gen_token()
             db_curs.execute("UPDATE projects "
                             "SET jobid=? "
-                            "WHERE projectid=?", ("pending",
+                            "WHERE projectid=?", ("diarize_audio",
                                                   request["projectid"]))
             db_curs.execute("INSERT INTO incoming "
                             "(projectid, url, servicetype) VALUES (?,?,?)", (request["projectid"],
