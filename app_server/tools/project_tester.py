@@ -197,7 +197,9 @@ class Project:
         """
         if self.user_token is not None and self.projectid is not None:
             headers = {"Content-Type" : "application/json"}
-            tasks = [('neil', 'neil', 0.0, 10.0), ('neil', 'neil', 20.0, 34.5)]
+            tasks = [{"editor" : "neil", "collator" : "neil", "start" : 0.0, "end" : 20.0, "language" : "English"},
+                    {"editor" : "daniel", "collator" : "daniel", "start" : 20.0, "end" : 40.0, "language" : "Afrikaans"},
+                    {"editor" : "gamer", "collator" : "gamer", "start" : 40.0, "end" : 60.0, "language" : "Zulu"}]
             data = {"token": self.user_token, "projectid" : self.projectid, "tasks": tasks}
             res = requests.post(BASEURL + "projects/saveproject", headers=headers, data=json.dumps(data))
             print('SERVER SAYS:', res.text)
@@ -205,6 +207,21 @@ class Project:
         else:
             print("User not logged in!")
         print('')
+
+    def assigntasks(self):
+        """
+            Assign tasks to editors
+        """
+        if self.user_token is not None and self.projectid is not None:
+            headers = {"Content-Type" : "application/json"}
+            data = {"token": self.user_token, "projectid" : self.projectid}
+            res = requests.post(BASEURL + "projects/assigntasks", headers=headers, data=json.dumps(data))
+            print('SERVER SAYS:', res.text)
+            print(res.status_code)
+        else:
+            print("User not logged in!")
+        print('')
+
 
     def diarizeaudio(self):
         """
@@ -225,39 +242,52 @@ if __name__ == "__main__":
     print('Accessing Docker app server via: http://127.0.0.1:9999/wsgi/')
     proj = Project()
 
-    try:
-        while True:
-            cmd = raw_input("Enter command (type help for list)> ")
-            cmd = cmd.lower()
-            if cmd == "exit":
-                proj.logout()
-                proj.adminlout()
-                break
-            elif cmd in ["help", "list"]:
-                print("ADMINLIN - Admin login")
-                print("ADMINLOUT - Admin logout")
-                print("ADDUSER - add new user\n")
-                print("LOGIN - user login")
-                print("LOGOUT - user logout")
-                print("LISTCATEGORIES - list project categories")
-                print("CREATEPROJECT - create a new project")
-                print("LISTPROJECTS - list projects")
-                print("LOADPROJECT - load projects")
-                print("UPLOADAUDIO - upload audio to project")
-                print("PROJECTAUDIO - retrieve project audio")
-                print("SAVEPROJECT - save tasks to a project\n")
-                print("DIARIZEAUDIO - save tasks to a project\n")
-                print("EXIT - quit")
+    if len(sys.argv) < 2:
+        try:
+            while True:
+                cmd = raw_input("Enter command (type help for list)> ")
+                cmd = cmd.lower()
+                if cmd == "exit":
+                    proj.logout()
+                    proj.adminlout()
+                    break
+                elif cmd in ["help", "list"]:
+                    print("ADMINLIN - Admin login")
+                    print("ADMINLOUT - Admin logout")
+                    print("ADDUSER - add new user\n")
+                    print("LOGIN - user login")
+                    print("LOGOUT - user logout")
+                    print("LISTCATEGORIES - list project categories")
+                    print("CREATEPROJECT - create a new project")
+                    print("LISTPROJECTS - list projects")
+                    print("LOADPROJECT - load projects")
+                    print("UPLOADAUDIO - upload audio to project")
+                    print("PROJECTAUDIO - retrieve project audio")
+                    print("SAVEPROJECT - save tasks to a project\n")
+                    print("ASSIGNTASKS - assign tasks to editors\n")
+                    print("DIARIZEAUDIO - save tasks to a project\n")
+                    print("EXIT - quit")
 
-            else:
-                try:
-                    meth = getattr(proj, cmd)
-                    meth()
-                except Exception as e:
-                    print('Error processing command:', e)
+                else:
+                    try:
+                        meth = getattr(proj, cmd)
+                        meth()
+                    except Exception as e:
+                        print('Error processing command:', e)
 
-    except:
-        proj.logout()
-        proj.adminlout()
-        print('')
+        except:
+            proj.logout()
+            proj.adminlout()
+            print('')
+    else:
+        if sys.argv[1].upper() == "ASSIGN":
+            proj.login()
+            proj.createproject()
+            proj.uploadaudio()
+            proj.saveproject()
+            proj.assigntasks()
+            proj.logout()
+        else:
+            print("UNKNOWN TASK: {}".format(sys.argv[1]))
+
 
