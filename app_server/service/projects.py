@@ -202,7 +202,7 @@ class Projects(auth.UserAuth):
         #CHECK PROJECTS DB IS UNLOCKED AND SANE
         with db:
             db.execute("BEGIN IMMEDIATE") #lock the db early...
-            row = db.execute("SELECT audiofile, year, assigned, jobid, errstatus"
+            row = db.execute("SELECT audiofile, year, assigned, jobid, errstatus "
                              "FROM projects "
                              "WHERE projectid=?",
                              (request["projectid"],)).fetchone()
@@ -335,8 +335,8 @@ class Projects(auth.UserAuth):
                                                   request["projectid"]))
             db_curs.execute("INSERT INTO incoming "
                             "(projectid, url, servicetype) VALUES (?,?,?)", (request["projectid"],
-                                                                          inurl,
-                                                                          "diarize"))
+                                                                             inurl,
+                                                                             "diarize"))
             db_curs.execute("INSERT INTO outgoing "
                             "(projectid, url, audiofile) VALUES (?,?,?)", (request["projectid"],
                                                                            outurl,

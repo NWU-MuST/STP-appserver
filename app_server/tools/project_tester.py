@@ -6,15 +6,24 @@ import requests
 import sys
 import json
 import os
+try:
+    from sqlite3 import dbapi2 as sqlite
+except ImportError:
+    from pysqlite2 import dbapi2 as sqlite #for old Python versions
 
 BASEURL = "http://127.0.0.1:9999/wsgi/"
 
 
 class Project:
 
-    def __init__(self):
+    def __init__(self, projectdbfile=None):
         self.user_token = None
         self.admin_token = None
+        self.projectid = None
+        if projectdbfile:
+            self.db = sqlite.connect(projectdbfile)
+            self.db.row_factory = sqlite.Row
+
 
     def login(self):
         """
@@ -233,6 +242,27 @@ class Project:
             res = requests.post(BASEURL + "projects/diarizeaudio", headers=headers, data=json.dumps(data))
             print('SERVER SAYS:', res.text)
             print(res.status_code)
+            print("SIMULATING SPEECH SERVER JOB:")
+            #GET URLs:
+            with self.db:
+                outurl, = self.db.execute("SELECT url "
+                                          "FROM outgoing "
+                                          "WHERE projectid=?", (self.projectid,)).fetchone()
+                inurl, = self.db.execute("SELECT url "
+                                         "FROM incoming "
+                                         "WHERE projectid=?", (self.projectid,)).fetchone()
+            print("\tSPEECHSERVER GET: ", end="")
+            res = requests.get(BASEURL + outurl, params={})
+            print(res.status_code)
+            if res.status_code == 200:
+                with open('diarize_tmp.ogg', 'wb') as f:
+                    f.write(res.content)
+            else:
+                print('SERVER SAYS:', res.text)
+            print("\tSPEECHSERVER PUT: ", end="")
+            data = {"CTM": "0.0 5.0\n5.0 10.0\n10.0 15.0"}
+            res = requests.put(BASEURL + inurl, headers=headers, data=json.dumps(data))
+            print(res.status_code)
         else:
             print("User not logged in!")
         print('')
@@ -240,9 +270,9 @@ class Project:
 
 if __name__ == "__main__":
     print('Accessing Docker app server via: http://127.0.0.1:9999/wsgi/')
-    proj = Project()
+    proj = Project(projectdbfile=sys.argv[1])
 
-    if len(sys.argv) < 2:
+    if len(sys.argv) < 3:
         try:
             while True:
                 cmd = raw_input("Enter command (type help for list)> ")
@@ -280,10 +310,18 @@ if __name__ == "__main__":
             proj.adminlout()
             print('')
     else:
-        if sys.argv[1].upper() == "ASSIGN":
+        if sys.argv[2].upper() == "ASSIGN":
             proj.login()
             proj.createproject()
             proj.uploadaudio()
+            proj.saveproject()
+            proj.assigntasks()
+            proj.logout()
+        if sys.argv[2].upper() == "DIARIZE_ASSIGN":
+            proj.login()
+            proj.createproject()
+            proj.uploadaudio()
+            proj.diarizeaudio()
             proj.saveproject()
             proj.assigntasks()
             proj.logout()
