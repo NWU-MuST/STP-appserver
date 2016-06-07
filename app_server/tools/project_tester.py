@@ -263,6 +263,8 @@ class Project:
             data = {"CTM": "0.0 5.0\n5.0 10.0\n10.0 15.0"}
             res = requests.put(BASEURL + inurl, headers=headers, data=json.dumps(data))
             print(res.status_code)
+            if res.status_code != 200:
+                print('SERVER SAYS:', res.text)                
         else:
             print("User not logged in!")
         print('')
