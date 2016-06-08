@@ -38,7 +38,10 @@ class Projects(auth.UserAuth):
     def __init__(self, config_file):
         with open(config_file) as infh:
             self._config = json.loads(infh.read())
-        self._categories = self._config["categories"]        
+        self._categories = self._config["categories"]
+        #DB connection setup:
+        self.db = sqlite.connect(self._config['projectdb'], factory=ProjectDB)
+        self.db.row_factory = sqlite.Row
 
     def list_categories(self, request):
         """
@@ -55,20 +58,13 @@ class Projects(auth.UserAuth):
         username = auth.token_auth(request["token"], self._config["authdb"])
 
         projectid = None
-        with sqlite.connect(self._config['projectdb']) as db_conn:
-            db_curs = db_conn.cursor()
-
+        with self.db as db:
             # Fetch project categories and check user supplied category
             if request["category"] not in self._categories:
                 raise BadRequestError('Project category: %s - NOT FOUND' % request["category"])
 
             # Fetch all projects
-            db_curs.execute("SELECT projectid FROM projects")
-            projects = db_curs.fetchall()
-            if projects is not None:
-                projects = set([x[0] for x in projects])
-            else:
-                projects = set()
+            projects = set(row["projectid"] for row in db.get_projects(["projectid"]))
 
             # Find unique project name
             projectid = str(uuid.uuid4())
@@ -79,8 +75,8 @@ class Projects(auth.UserAuth):
             year = datetime.datetime.now().year
 
             # Insert new project into project master table
-            db_curs.execute("INSERT INTO projects (projectid, projectname, category, username, audiofile, year, creation, assigned) VALUES(?,?,?,?,?,?,?,?)",
-                            (projectid, request["projectname"], request["category"], username, "", year, time.time(), "N"))
+            db.execute("INSERT INTO projects (projectid, projectname, category, username, audiofile, year, creation, assigned) VALUES(?,?,?,?,?,?,?,?)",
+                       (projectid, request["projectname"], request["category"], username, "", year, time.time(), "N"))
 
             # Create project table
             table_name = "T{}".format(year)
@@ -89,8 +85,7 @@ class Projects(auth.UserAuth):
                       "start REAL, end REAL, language VARCHAR(20), "
                       "textfile VARCHAR(64), creation REAL, modified REAL, commitid VARCHAR(40), "
                       "ownership INTEGER, jobid VARCHAR(36), errstatus VARCHAR(128) )" )
-            db_curs.execute(query)
-            db_conn.commit()
+            db.execute(query)
         LOG.info("ProjID:{} Created new project".format(projectid))
         return {'projectid' : projectid}
 
@@ -104,7 +99,7 @@ class Projects(auth.UserAuth):
         with sqlite.connect(self._config['projectdb']) as db_conn:
             # Fetch all projects
             db_curs = db_conn.cursor()
-            db_curs.execute("SELECT * FROM projects where username=?", (username,))
+            db_curs.execute("SELECT * FROM projects WHERE username=?", (username,))
             projects = db_curs.fetchall()
         LOG.info("User:{} Returning list of projects".format(username))
         return {'projects' : projects}
@@ -197,24 +192,22 @@ class Projects(auth.UserAuth):
         """
         auth.token_auth(request["token"], self._config["authdb"])
 
-        db = sqlite.connect(self._config['projectdb'])
-        db.row_factory = sqlite.Row
-        with db:
+        with self.db as db:
             #LOCK THE DB
-            lock(db)
+            db.lock()
             #CHECK PROJECT
-            row = project_get_row(db, request["projectid"],
-                                  fields=["audiofile"],
-                                  check_lock=True,
-                                  check_err=True) #later "try" to recover from certain issues
-            if project_assigned(db, request["projectid"]):
+            row = db.get_project(request["projectid"],
+                                 fields=["audiofile"],
+                                 check_lock=True,
+                                 check_err=True) #later "try" to recover from certain issues
+            if db.project_assigned(request["projectid"]):
                 message = "Tasks have already been assigned"
                 LOG.debug(message)
                 raise ConflictError(message)
             #FETCH TASKS
-            tasks = get_tasks(db, request["projectid"])
+            tasks = db.get_tasks(request["projectid"])
             #LOCK THE PROJECT
-            lock_project(db, request["projectid"], jobid="assign_tasks")
+            db.lock_project(request["projectid"], jobid="assign_tasks")
         try:
             #CREATE FILES AND UPDATE FIELDS
             textname = "text"
@@ -230,15 +223,15 @@ class Projects(auth.UserAuth):
                 task["modified"] = task["creation"]
                 task["ownership"] = 0 #Actually need an ownership ENUM: {0: "editor", 1: "collator"}
             #UPDATE FIELDS AND UNLOCK PROJECT
-            with db:
-                update_tasks(db, request["projectid"], tasks, fields=updatefields)
-                update_project(db, request["projectid"], fields={"assigned": "Y", "jobid": None})
+            with self.db as db:
+                db.update_tasks(request["projectid"], tasks, fields=updatefields)
+                db.update_project(request["projectid"], fields={"assigned": "Y", "jobid": None})
             LOG.info("ProjID:{} Assigned tasks".format(request["projectid"]))
             return 'Project tasks assigned!'
         finally:
             #UNLOCK THE PROJECT AND SET ERRSTATUS
-            with db:
-                unlock_project(db, request["projectid"], errstatus="assign_tasks")
+            with self.db as db:
+                db.unlock_project(request["projectid"], errstatus="assign_tasks")
 
 
     def update_project(self, request):
@@ -427,106 +420,120 @@ class Projects(auth.UserAuth):
         LOG.info("ProjID:{} Diarization result received successfully".format(projectid))
 
 
-#This collection of functions should really be methods on a subclassed
-#SQLite DB object called something like "ProjectsDB"
-def lock(db):
-    db.execute("BEGIN IMMEDIATE")
+class ProjectDB(sqlite.Connection):
 
-def project_get_row(db, projectid, fields, check_lock=True, check_err=True):
-    """Check whether project exists and is clean before returning
-       fields...
-    """
-    fields = set(fields)
-    fields.update({"jobid", "errstatus"})
+    def lock(self):
+        self.execute("BEGIN IMMEDIATE")
 
-    query = "SELECT {} FROM projects WHERE projectid=?".format(", ".join(fields))
-    row = db.execute(query, (projectid,)).fetchone()
-    if row is None: #project exists?
-        message = "ProjID:{} Project not found".format(projectid)
-        LOG.debug(message)
-        raise NotFoundError(message)
-    row = dict(row)
-    if check_lock and row["jobid"]: #project clean?
-        message = "ProjID:{} This project is currently locked with jobid: {}".format(projectid, jobid)
-        LOG.debug(message)
-        raise ConflictError(message)
-    if check_err and row["errstatus"]:
-        message = "ProjID:{} A previous job resulted in error: '{}'".format(projectid, errstatus)
-        LOG.debug(message)
-        raise ConflictError(message)
-    return row
+    def get_projects(self, fields, where=None):
+        if not fields is None:
+            selectq = ", ".join(fields)
+        else:
+            selectq = "*"
+        if not where is None:
+            wherefields = list(where)
+            whereq = ", ".join(["{}=?".format(f) for f in wherefields])
+            rows = self.execute("SELECT {} ".format(selectq) +\
+                                "FROM projects "
+                                "WHERE {}".format(whereq), tuple(where[k] for k in wherefields)).fetchall()
+        else:
+            rows = self.execute("SELECT {} FROM projects".format(selectq)).fetchall()            
+        if rows is None:
+            return []
+        return map(dict, rows)
 
-def project_assigned(db, projectid, check_lock=False, check_err=False):
-    project_get_row(db,
-                    projectid,
-                    fields=("assigned",),
-                    check_lock=check_lock,
-                    check_err=check_err)["assigned"].upper() == "Y"
-    
+    def get_project(self, projectid, fields, check_lock=True, check_err=True):
+        """Check whether project exists and is clean before returning
+           fields...
+        """
+        fields = set(fields)
+        fields.update({"jobid", "errstatus"})
 
-def get_tasks(db, projectid, fields=None, check_lock=False, check_err=False):
-    year = project_get_row(db,
-                          projectid,
-                          fields=("year",),
-                          check_lock=check_lock,
-                          check_err=check_err)["year"]
-    tasktable = "T{}".format(year)
-    if not fields is None:
-        select = ", ".join(fields)
-    else:
-        select = "*"
-    tasks = db.execute("SELECT {} FROM {} ".format(select, tasktable) +\
-                       "WHERE projectid=?", (projectid,)).fetchall()
-    if tasks is None:
-        message = "ProjID:{} No tasks found".format(projectid)
-        LOG.debug(message)
-        raise NotFoundError(message)
-    return map(dict, tasks)
+        query = "SELECT {} FROM projects WHERE projectid=?".format(", ".join(fields))
+        row = self.execute(query, (projectid,)).fetchone()
+        if row is None: #project exists?
+            message = "ProjID:{} Project not found".format(projectid)
+            LOG.debug(message)
+            raise NotFoundError(message)
+        row = dict(row)
+        if check_lock and row["jobid"]: #project clean?
+            message = "ProjID:{} This project is currently locked with jobid: {}".format(projectid, jobid)
+            LOG.debug(message)
+            raise ConflictError(message)
+        if check_err and row["errstatus"]:
+            message = "ProjID:{} A previous job resulted in error: '{}'".format(projectid, errstatus)
+            LOG.debug(message)
+            raise ConflictError(message)
+        return row
 
-def lock_project(db, projectid, jobid=None):
-    jobid = str(jobid)
-    db.execute("UPDATE projects "
-               "SET jobid=? "
-               "WHERE projectid=?", (jobid,
-                                     projectid))
-
-def unlock_project(db, projectid, errstatus=None):
-    db.execute("UPDATE projects "
-               "SET jobid=?, errstatus=? "
-               "WHERE projectid=?", (None,
-                                     errstatus,
-                                     projectid))
-
-
-def update_tasks(db, projectid, tasks, fields, check_alldef=True, check_lock=False, check_err=False):
-    year = project_get_row(db,
-                          projectid,
-                          fields=("year",),
-                          check_lock=check_lock,
-                          check_err=check_err)["year"]
-    tasktable = "T{}".format(year)
-    #Make sure all required fields are set
-    if check_alldef:
-        undefined = (None, "")
-        for task in tasks:
-            try:
-                assert all(v not in undefined for k, v in task.iteritems() if k in fields), "Not all necessary task fields are defined for assign_tasks()"
-            except AssertionError as e:
-                LOG.debug("ProjID:{} {}".format(projectid, e))
-                raise
-    #Commit to DB (currently fail silently if nonexistent)
-    for task in tasks:
-        db.execute("UPDATE {} ".format(tasktable) +\
-                   "SET {} ".format(", ".join(field + "=?" for field in fields)) +\
-                   "WHERE projectid=? AND taskid=?",
-                   tuple([task[k] for k in fields] + [projectid, task["taskid"]]))
+    def project_assigned(self, projectid, check_lock=False, check_err=False):
+        self.get_project(projectid,
+                         fields=("assigned",),
+                         check_lock=check_lock,
+                         check_err=check_err)["assigned"].upper() == "Y"
         
-def update_project(db, projectid, fields):
-    fieldkeys = tuple(fields)
-    setfields = ", ".join(k + "=?" for k in fieldkeys)
-    db.execute("UPDATE projects "
-               "SET {} ".format(setfields) +\
-               "WHERE projectid=?", tuple([fields[k] for k in fieldkeys] + [projectid]))
+
+    def get_tasks(self, projectid, fields=None, check_lock=False, check_err=False):
+        year = self.get_project(projectid,
+                                fields=("year",),
+                                check_lock=check_lock,
+                                check_err=check_err)["year"]
+        tasktable = "T{}".format(year)
+        if not fields is None:
+            selectq = ", ".join(fields)
+        else:
+            selectq = "*"
+        tasks = self.execute("SELECT {} FROM {} ".format(selectq, tasktable) +\
+                           "WHERE projectid=?", (projectid,)).fetchall()
+        if tasks is None:
+            message = "ProjID:{} No tasks found".format(projectid)
+            LOG.debug(message)
+            raise NotFoundError(message)
+        return map(dict, tasks)
+
+    def lock_project(self, projectid, jobid=None):
+        jobid = str(jobid)
+        self.execute("UPDATE projects "
+                     "SET jobid=? "
+                     "WHERE projectid=?", (jobid,
+                                           projectid))
+        
+    def unlock_project(self, projectid, errstatus=None):
+        self.execute("UPDATE projects "
+                     "SET jobid=?, errstatus=? "
+                     "WHERE projectid=?", (None,
+                                           errstatus,
+                                           projectid))
+
+
+    def update_tasks(self, projectid, tasks, fields, check_alldef=True, check_lock=False, check_err=False):
+        year = self.get_project(projectid,
+                                fields=("year",),
+                                check_lock=check_lock,
+                                check_err=check_err)["year"]
+        tasktable = "T{}".format(year)
+        #Make sure all required fields are set
+        if check_alldef:
+            undefined = (None, "")
+            for task in tasks:
+                try:
+                    assert all(v not in undefined for k, v in task.iteritems() if k in fields), "Not all necessary task fields are defined for assign_tasks()"
+                except AssertionError as e:
+                    LOG.debug("ProjID:{} {}".format(projectid, e))
+                    raise
+        #Commit to DB (currently fail silently if nonexistent)
+        for task in tasks:
+            self.execute("UPDATE {} ".format(tasktable) +\
+                         "SET {} ".format(", ".join(field + "=?" for field in fields)) +\
+                         "WHERE projectid=? AND taskid=?",
+                         tuple([task[k] for k in fields] + [projectid, task["taskid"]]))
+
+    def update_project(self, projectid, fields):
+        fieldkeys = tuple(fields)
+        setq = ", ".join(k + "=?" for k in fieldkeys)
+        self.execute("UPDATE projects "
+                     "SET {} ".format(setq) +\
+                     "WHERE projectid=?", tuple([fields[k] for k in fieldkeys] + [projectid]))
 
 
 if __name__ == "__main__":
