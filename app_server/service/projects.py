@@ -236,13 +236,9 @@ class Projects(auth.UserAuth):
             LOG.info("ProjID:{} Assigned tasks".format(request["projectid"]))
             return 'Project tasks assigned!'
         finally:
-            #UNLOCK THE PROJECT AND SET ERRSTATUS: DEMIT
+            #UNLOCK THE PROJECT AND SET ERRSTATUS
             with db:
-                db.execute("UPDATE projects "
-                           "SET jobid=?, errstatus=? "
-                           "WHERE projectid=?", (None,
-                                                 "assign_tasks",
-                                                 request["projectid"]))
+                unlock_project(db, request["projectid"], errstatus="assign_tasks")
 
 
     def update_project(self, request):
@@ -493,6 +489,14 @@ def lock_project(db, projectid, jobid=None):
                "SET jobid=? "
                "WHERE projectid=?", (jobid,
                                      projectid))
+
+def unlock_project(db, projectid, errstatus=None):
+    db.execute("UPDATE projects "
+               "SET jobid=?, errstatus=? "
+               "WHERE projectid=?", (None,
+                                     errstatus,
+                                     projectid))
+
 
 def update_tasks(db, projectid, tasks, fields, check_alldef=True, check_lock=False, check_err=False):
     year = project_get_row(db,
