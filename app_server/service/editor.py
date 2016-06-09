@@ -91,6 +91,9 @@ class Editor(auth.UserAuth):
         """
             Return the audio for this specific task
         """
+        #TODO: check if audiofile, start and end is valid
+        # check if you can access this project
+
         auth.token_auth(request["token"], self._config["authdb"])
         with sqlite.connect(self._config["projectdb"]) as db_conn:
             db_conn.row_factory = sqlite.Row
@@ -112,6 +115,8 @@ class Editor(auth.UserAuth):
         """
             Return the text data for this specific task
         """
+        #TODO: check if user can access this task - not speech or error lock
+
         auth.token_auth(request["token"], self._config["authdb"])
         with sqlite.connect(self._config["projectdb"]) as db_conn:
             db_conn.row_factory = sqlite.Row
@@ -137,6 +142,8 @@ class Editor(auth.UserAuth):
         """
             Save the provided text to task
         """
+        #TODO: check if you can save to this task -- check lock
+
         auth.token_auth(request["token"], self._config["authdb"])
         with sqlite.connect(self._config["projectdb"]) as db_conn:
             db_conn.row_factory = sqlite.Row
@@ -459,6 +466,8 @@ class Editor(auth.UserAuth):
         """
             Modify a task field
         """
+        #TODO: user can change anything on the task -- is dangerous
+
         auth.token_auth(request["token"], self._config["authdb"])
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_conn.row_factory = sqlite.Row
@@ -484,6 +493,19 @@ class Editor(auth.UserAuth):
             db_conn.commit()
 
         return "Task updated"
+
+
+    def _fetch_task(self):
+        pass
+
+    def _fetch_project(self):
+        pass
+
+    def _task_check_error(self):
+        pass
+
+    def _task_check_job(self):
+        pass
 
 
 if __name__ == "__main__":
