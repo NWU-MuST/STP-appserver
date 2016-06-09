@@ -34,7 +34,7 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"username": "neil", "password": "neil"}
             res = requests.post(BASEURL + "projects/login", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
+            print('login(): SERVER SAYS:', res.text)
             pkg = res.json()
             self.user_token = pkg['token']
         else:
@@ -50,7 +50,7 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"username": "root", "password": "123456"}
             res = requests.post(BASEURL + "projects/admin/login", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
+            print('adminlin(): SERVER SAYS:', res.text)
             print(res.status_code)
             pkg = res.json()
             self.admin_token = pkg['token']
@@ -66,7 +66,7 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.admin_token}
             res = requests.post(BASEURL + "projects/admin/logout", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
+            print('adminlout(): SERVER SAYS:', res.text)
             self.admin_token = None
         else:
             print("Admin not logged in!")
@@ -80,7 +80,7 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.user_token}
             res = requests.post(BASEURL + "projects/logout", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
+            print('logout(): SERVER SAYS:', res.text)
             self.user_token = None
         else:
             print("Admin not logged in!")
@@ -95,7 +95,7 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.admin_token, "username": "neil", "password": "neil", "name": "neil", "surname": "kleynhans", "email": "neil@organisation.org"}
             res = requests.post(BASEURL + "projects/admin/adduser", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
+            print('adduser(): SERVER SAYS:', res.text)
             print(res.status_code)
         else:
             print("Admin not logged in!")
@@ -109,7 +109,7 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.user_token}
             res = requests.post(BASEURL + "projects/listcategories", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
+            print('listcategories(): SERVER SAYS:', res.text)
             print(res.status_code)
         else:
             print("User not logged in!")
@@ -124,7 +124,7 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.user_token, "projectname" : "new_project", "category" : "NCOP" }
             res = requests.post(BASEURL + "projects/createproject", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
+            print('createproject(): SERVER SAYS:', res.text)
             print(res.status_code)
             pkg = res.json()
             self.projectid = pkg['projectid']
@@ -140,7 +140,7 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.user_token}
             res = requests.post(BASEURL + "projects/listprojects", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
+            print('listprojects(): SERVER SAYS:', res.text)
             print(res.status_code)
         else:
             print("User not logged in!")
@@ -154,7 +154,20 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.user_token, "projectid" : self.projectid}
             res = requests.post(BASEURL + "projects/loadproject", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
+            print('loadproject(): SERVER SAYS:', res.text)
+            print(res.status_code)
+        else:
+            print("User not logged in!")
+        print('')
+
+    def deleteproject(self):
+        """Delete a specific project
+        """
+        if self.user_token is not None and self.projectid is not None:
+            headers = {"Content-Type" : "application/json"}
+            data = {"token": self.user_token, "projectid" : self.projectid}
+            res = requests.post(BASEURL + "projects/deleteproject", headers=headers, data=json.dumps(data))
+            print('deleteproject(): SERVER SAYS:', res.text)
             print(res.status_code)
         else:
             print("User not logged in!")
@@ -173,7 +186,7 @@ class Project:
                 with open('tmp.ogg', 'wb') as f:
                     f.write(res.content)
             else:
-                print('SERVER SAYS:', res.text)
+                print('projectaudio(): SERVER SAYS:', res.text)
         else:
             print("User not logged in!")
         print('')
@@ -191,7 +204,7 @@ class Project:
         if self.user_token is not None and self.projectid is not None:
             files = {'file' : open('test.ogg', 'rb'), 'filename' : 'test.ogg', 'token' : self.user_token, 'projectid' : self.projectid}
             res = requests.post(BASEURL + "projects/uploadaudio", files=files)
-            print('SERVER SAYS:', res.text)
+            print('uploadaudio(): SERVER SAYS:', res.text)
             print(res.status_code)
         else:
             print("User not logged in!")
@@ -211,7 +224,7 @@ class Project:
                     {"editor" : "gamer", "collator" : "gamer", "start" : 40.0, "end" : 60.0, "language" : "Zulu"}]
             data = {"token": self.user_token, "projectid" : self.projectid, "tasks": tasks}
             res = requests.post(BASEURL + "projects/saveproject", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
+            print('saveproject(): SERVER SAYS:', res.text)
             print(res.status_code)
         else:
             print("User not logged in!")
@@ -225,7 +238,7 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.user_token, "projectid" : self.projectid}
             res = requests.post(BASEURL + "projects/assigntasks", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
+            print('assigntasks(): SERVER SAYS:', res.text)
             print(res.status_code)
         else:
             print("User not logged in!")
@@ -240,7 +253,7 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.user_token, "projectid" : self.projectid}
             res = requests.post(BASEURL + "projects/diarizeaudio", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
+            print('diarizeaudio(): SERVER SAYS:', res.text)
             print(res.status_code)
             print("SIMULATING SPEECH SERVER JOB:")
             #GET URLs:
@@ -327,6 +340,24 @@ if __name__ == "__main__":
             proj.saveproject()
             proj.assigntasks()
             proj.logout()
+        if sys.argv[2].upper() == "DIARIZE_ASSIGN_DELETE":
+            proj.login()
+            proj.createproject()
+            proj.uploadaudio()
+            proj.diarizeaudio()
+            proj.saveproject()
+            proj.assigntasks()
+            proj.deleteproject()
+            proj.logout()
+        if sys.argv[2].upper() == "DIARIZE_DELETE":
+            proj.login()
+            proj.createproject()
+            proj.uploadaudio()
+            proj.diarizeaudio()
+            proj.saveproject()
+            proj.deleteproject()
+            proj.logout()
+
         else:
             print("UNKNOWN TASK: {}".format(sys.argv[1]))
 
