@@ -35,10 +35,11 @@ class Admin(admin.Admin):
 
 class Projects(auth.UserAuth):
 
-    def __init__(self, config_file):
+    def __init__(self, config_file, speechserv):
         with open(config_file) as infh:
             self._config = json.loads(infh.read())
         self._categories = self._config["categories"]        
+        self._speech = speechserv
 
     def list_categories(self, request):
         """

@@ -11,6 +11,7 @@ import cStringIO
 import logging
 
 from service.httperrs import *
+from service.speech import Speech
 
 LOG = logging.getLogger("APP.DISPATCHER")
 
@@ -22,6 +23,7 @@ class Dispatch:
         self._modules = {}
         self._module_config = {}
         self._routing = {}
+        self._speech = None
 
     def load(self):
         """
@@ -31,6 +33,8 @@ class Dispatch:
         self.load_config()
         self.clear_routing()
         self.load_handlers()
+        self._speech = Speech(self._config_file)
+        self._speech.login()
 
     def _parse_module_name(self, module_handle):
         """
@@ -93,21 +97,19 @@ class Dispatch:
 
         uri = env['PATH_INFO']
         if uri not in self._routing['GET']:
-            uri = os.path.basename(uri)
-            #Check whether this is a GET on a temporary "outgoing"
-            #URL.
-            #DEMIT: Ideally want base URL to determine module
-            #instead of this for-loop, but will have to fix such a
-            #convention on URL somewhere -- in config JSON?
-            for modu in self._config["TEMPIO_MODULES"]:
+            try:
+                modu_name = os.path.basename(os.path.dirname(uri))
+                uri = os.path.basename(uri)
+                modu = self._config["TEMPIO_MODULES"][modu_name]
                 module_hook = self._modules[modu]
                 module_config = self._module_config[modu]
-                module = module_hook(module_config)
-                try:
-                    return module.outgoing(uri)
-                except MethodNotAllowedError:
-                    pass #raise below if all modules fail...
-            raise MethodNotAllowedError("GET does not support: {}".format(uri))
+                module = module_hook(module_config, self._speech)
+                return module.outgoing(uri)
+    
+            except MethodNotAllowedError:
+                raise MethodNotAllowedError("GET does not support: {}".format(uri))
+            except Exception as e:
+                raise Exception(str(e))
         else:
             for parameter in self._routing['GET'][uri]['parameters']:
                 if parameter not in data:
@@ -117,7 +119,7 @@ class Dispatch:
             module_config = self._module_config[module_name]
             module_hook = self._modules[module_name]
 
-            module = module_hook(module_config)
+            module = module_hook(module_config, self._speech)
             method = getattr(module, self._routing['GET'][uri]['method'])
 
             dispatch_result = dict()
@@ -154,7 +156,7 @@ class Dispatch:
         module_config = self._module_config[module_name]
         module_hook = self._modules[module_name]
 
-        module = module_hook(module_config)
+        module = module_hook(module_config, self._speech)
         method = getattr(module, self._routing['POST'][uri]['method'])
 
         dispatch_result = dict()
@@ -185,20 +187,19 @@ class Dispatch:
 
         uri = env['PATH_INFO']
         if uri not in self._routing['PUT']:
-            uri = os.path.basename(uri)
-            #Check whether this is a PUT on a temporary "outgoing"
-            #URL. Ideally want base URL to determine module
-            #instead of this for-loop, but will have to fix such a
-            #convention on URL somewhere -- in config JSON?
-            for modu in self._config["TEMPIO_MODULES"]:
+            try:
+                modu_name = os.path.basename(os.path.dirname(uri))
+                uri = os.path.basename(uri)
+                modu = self._config["TEMPIO_MODULES"][modu_name]
                 module_hook = self._modules[modu]
                 module_config = self._module_config[modu]
-                module = module_hook(module_config)
-                try:
-                    return module.incoming(uri, data)
-                except MethodNotAllowedError:
-                    pass #raise below if all modules fail...
-            raise MethodNotAllowedError('PUT does not support: %s' % uri)
+                module = module_hook(module_config, self._speech)
+                return module.incoming(uri, data)
+    
+            except MethodNotAllowedError:
+                raise MethodNotAllowedError("PUT does not support: {}".format(uri))
+            except Exception as e:
+                raise Exception(str(e))
 
         else:
             #DEMIT: Refactor the following blocks? Almost exact copy of "post" method.
@@ -210,7 +211,7 @@ class Dispatch:
             module_config = self._module_config[module_name]
             module_hook = self._modules[module_name]
 
-            module = module_hook(module_config)
+            module = module_hook(module_config, self._speech)
             method = getattr(module, self._routing['PUT'][uri]['method'])
 
             dispatch_result = dict()
@@ -222,3 +223,10 @@ class Dispatch:
             else:
                 raise Exception("Bad result type from service method")
             return dispatch_result
+
+    def shutdown(self):
+        """
+            Shutdown
+        """
+        self._speech.logout()
+

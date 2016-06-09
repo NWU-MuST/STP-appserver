@@ -31,9 +31,10 @@ class Admin(admin.Admin):
 
 class Editor(auth.UserAuth):
 
-    def __init__(self, config_file):
+    def __init__(self, config_file, speechserv):
         with open(config_file) as infh:
             self._config = json.loads(infh.read())
+        self._speech = speechserv
 
     def load_tasks(self, request):
         """
@@ -74,7 +75,7 @@ class Editor(auth.UserAuth):
                 if this_task["errstatus"] is not None and this_task["errstatus"] != "":
                      tasks["ERROR"].append(this_task)
                 elif this_task["jobid"] is not None and this_task["jobid"] != "":
-                     tasks["NOTASSIGNED"].append(this_task)
+                     tasks["SPEECHLOCKED"].append(this_task)
                 elif int(this_task["ownership"]) == 1: #TODO: this enum should most probably sit somewhere
                      tasks["READONLY"].append(this_task)
                 elif int(this_task["ownership"]) == 0:
@@ -94,14 +95,18 @@ class Editor(auth.UserAuth):
         with sqlite.connect(self._config["projectdb"]) as db_conn:
             db_conn.row_factory = sqlite.Row
             db_curs = db_conn.cursor()
-            db_curs.execute("SELECT audiofile FROM projects WHERE projectid=?", (request["projectid"],))
-            audiofile = db_curs.fetchone()
 
-            db_curs.execute("SELECT start, end FROM T{} WHERE taskid=? AND projectid=?".format(request["year"]), (request["taskid"], request["project"]))
+            db_curs.execute("SELECT * FROM projects WHERE projectid=?", (request["projectid"],))
+            project = db_curs.fetchone()
+            if project is None:
+                raise NotFoundError("Project not found")
+            project = dict(project)
+
+            db_curs.execute("SELECT start, end FROM T{} WHERE taskid=? AND projectid=?".format(project["year"]), (request["taskid"], request["projectid"]))
             _tmp = dict(db_curs.fetchone())
             audiorange = [float(_tmp["start"]), float(_tmp["end"])]
 
-        return {"filename" : audiofile["audiofile"], "range" : audiorange, "mime" : "audio/ogg"}
+        return {"filename" : project["audiofile"], "range" : audiorange, "mime" : "audio/ogg"}
 
     def task_text(self, request):
         """
@@ -111,7 +116,14 @@ class Editor(auth.UserAuth):
         with sqlite.connect(self._config["projectdb"]) as db_conn:
             db_conn.row_factory = sqlite.Row
             db_curs = db_conn.cursor()
-            db_curs.execute("SELECT textfile FROM T{} WHERE taskid=? AND projectid=?".format(request["year"]), (request["taskid"],request["projectid"]))
+
+            db_curs.execute("SELECT * FROM projects WHERE projectid=?", (request["projectid"],))
+            project = db_curs.fetchone()
+            if project is None:
+                raise NotFoundError("Project not found")
+            project = dict(project)
+
+            db_curs.execute("SELECT textfile FROM T{} WHERE taskid=? AND projectid=?".format(project["year"]), (request["taskid"],request["projectid"]))
             task = dict(db_curs.fetchone())
             if task is None:
                 raise NotFoundError("Task not found")
@@ -127,21 +139,31 @@ class Editor(auth.UserAuth):
         """
         auth.token_auth(request["token"], self._config["authdb"])
         with sqlite.connect(self._config["projectdb"]) as db_conn:
+            db_conn.row_factory = sqlite.Row
             db_curs = db_conn.cursor()
-            db_curs.execute("SELECT * FROM T{} WHERE taskid=? AND projectid=?".format(request["year"]), (request["taskid"],request["projectid"]))
+
+            db_curs.execute("SELECT * FROM projects WHERE projectid=?", (request["projectid"],))
+            project = db_curs.fetchone()
+            if project is None:
+                raise NotFoundError("Project not found")
+            project = dict(project)
+
+            db_curs.execute("SELECT * FROM T{} WHERE taskid=? AND projectid=?".format(project["year"]), (request["taskid"],request["projectid"]))
             task = db_curs.fetchone()
             if task is None:
                 raise NotFoundError("Task not found")
             task = dict(task)
             textdir = os.path.dirname(task["textfile"])
             #TODO: check errors, not sure how we recover from here
-            repo.check()
+            repo.check(textdir)
             with codecs.open(task["textfile"], "w", "utf-8") as f:
                 f.write(request["text"])
             task["commitid"], task["modified"] = repo.commit(textdir, os.path.basename(task["textfile"]), "Changes saved")
-            db_curs.execute("UPDATE T{} SET commitid=?, modified=? WHERE taskid=? AND projectid=?".format(request["year"]),
+            db_curs.execute("UPDATE T{} SET commitid=?, modified=? WHERE taskid=? AND projectid=?".format(project["year"]),
                 (task["commitid"], task["modified"], request["taskid"], request["projectid"]))
             db_conn.commit()
+
+        return "Text Saved!"
 
     def speech_job(self, request):
         """
@@ -149,17 +171,30 @@ class Editor(auth.UserAuth):
         """
         auth.token_auth(request["token"], self._config["authdb"])
 
-        if request["service"] not in self._config["speechservices"]:
+        # Check if service exists
+        if request["service"] not in self._config["speechservices"]["services"]:
             raise NotFoundError("Requested speech service not available")
+
+        # Check all parameters
+        for value in self._config["speechservices"]["services"][request["service"]]["require"]:
+            if value not in request:
+                raise BadRequestError("Missing parameter in request: {}".format(value))
 
         #Attempt to "lock" projects and create I/O access
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_conn.row_factory = sqlite.Row
             db_curs = db_conn.cursor()
             db_curs.execute("BEGIN IMMEDIATE") #lock the db early...
-            db_curs.execute("SELECT start, end, jobid"
+
+            db_curs.execute("SELECT * FROM projects WHERE projectid=?", (request["projectid"],))
+            project = db_curs.fetchone()
+            if project is None:
+                raise NotFoundError("Project not found")
+            project = dict(project)
+
+            db_curs.execute("SELECT start, end, jobid "
                             "FROM T{} "
-                            "WHERE taskid=? AND projectid=?".format(request["year"]), (request["taskid"],request["projectid"]))
+                            "WHERE taskid=? AND projectid=?".format(project["year"]), (request["taskid"],request["projectid"]))
             task = db_curs.fetchone()
             #Task exists?
             if task is None:
@@ -172,23 +207,16 @@ class Editor(auth.UserAuth):
                 db_conn.commit()
                 raise ConflictError("A job with id '{}' is already pending on this task".format(jobid))
 
-            db_curs.execute("SELECT audiofile FROM projects WHERE projectid=?", (request["projectid"],))
-            project = db_curs.fetchone()
-            #Project exists?
-            if project is None:
-                db_conn.commit()
-                raise NotFoundError("Project not found")
-            project = dict(project)
-
             #Setup I/O access
             inurl = auth.gen_token()
             outurl = auth.gen_token()
+
             db_curs.execute("UPDATE T{} "
                             "SET jobid=? "
-                            "WHERE taskid=? AND projectid=?".format(request["year"]), ("pending",
+                            "WHERE taskid=? AND projectid=?".format(project["year"]), ("pending",
                                                   request["taskid"], request["projectid"]))
             db_curs.execute("INSERT INTO incoming "
-                            "(projectid, url, servicetype) VALUES (?,?,?)", (request["projectid"],
+                            "(projectid, taskid, url, servicetype) VALUES (?,?,?,?)", (request["projectid"], request["taskid"],
                                                                           inurl,
                                                                           request["service"]))
             db_curs.execute("INSERT INTO outgoing "
@@ -196,13 +224,20 @@ class Editor(auth.UserAuth):
                                                                            outurl, project["audiofile"], task["start"], task["end"]))
             db_conn.commit()
         #Make job request
-        # TEMPORARILY COMMENTED OUT FOR TESTING WITHOUT SPEECHSERVER:
-        # jobreq = {"token" : request["token"], "getaudio": os.path.join(APPSERVER, outurl),
-        #           "putresult": os.path.join(APPSERVER, inurl), "service" : "diarize", "subsystem" : "default"}
-        # LOG.debug(os.path.join(SPEECHSERVER, self._config["speechservices"]["diarize"]))
-        # reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]["diarize"]), data=json.dumps(jobreq))
-        # reqstatus = reqstatus.json()
-        reqstatus = {"jobid": auth.gen_token()} #DEMIT: dummy call for testing!
+        #TEMPORARILY COMMENTED OUT FOR TESTING WITHOUT SPEECHSERVER:
+        #TODO: fix editor reference
+        jobreq = {"token" : self._speech.token(), "getaudio": os.path.join(APPSERVER, "editor", outurl),
+                   "putresult": os.path.join(APPSERVER, "editor", inurl)}
+        jobreq["service"] = request["service"]
+        jobreq["subsystem"] = self._config["speechservices"]["services"][request["service"]]["subsystem"]
+        for value in self._config["speechservices"]["services"][request["service"]]["require"]:
+            jobreq[value] = request[value]
+
+        LOG.debug(os.path.join(SPEECHSERVER, self._config["speechservices"]["url"]))
+        LOG.debug("{}".format(jobreq))
+        reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]["url"]), data=json.dumps(jobreq))
+        reqstatus = reqstatus.json()
+        #reqstatus = {"jobid": auth.gen_token()} #DEMIT: dummy call for testing!
 
         #TODO: handle return status
         LOG.debug("{}".format(reqstatus))
@@ -212,7 +247,7 @@ class Editor(auth.UserAuth):
                 db_curs = db_conn.cursor()
                 db_curs.execute("UPDATE T{} "
                                 "SET jobid=? "
-                                "WHERE taskid=? AND projectid=?".format(request["year"]), (reqstatus["jobid"],
+                                "WHERE taskid=? AND projectid=?".format(project["year"]), (reqstatus["jobid"],
                                                       request["taskid"], request["projectid"]))
                 db_conn.commit()
             LOG.info("Speech service request sent for project ID: {}, task ID: {}, job ID: {}".format(request["projectid"], request["taskid"], reqstatus["jobid"]))
@@ -220,10 +255,15 @@ class Editor(auth.UserAuth):
         #Something went wrong: undo project setup
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
-            db_curs.execute("UPDATE projects "
+            db_curs.execute("UPDATE T{} "
                             "SET jobid=? "
-                            "WHERE taskid=? AND projectid=?", (None,
+                            "WHERE taskid=? AND projectid=?".format(project["year"]), (None,
                                                   request["taskid"], request["projectid"]))
+            if "message" in reqstatus:
+                db_curs.execute("UPDATE T{} "
+                                "SET errstatus=? "
+                                "WHERE taskid=? AND projectid=?".format(project["year"]), (reqstatus["message"],
+                                                      request["taskid"], request["projectid"]))
             db_curs.execute("DELETE FROM incoming "
                             "WHERE url=?", (inurl,))
             db_curs.execute("DELETE FROM outgoing "
@@ -235,12 +275,14 @@ class Editor(auth.UserAuth):
     def outgoing(self, uri):
         """
         """
+        LOG.debug(uri)
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_conn.row_factory = sqlite.Row
             db_curs = db_conn.cursor()
             db_curs.execute("SELECT projectid, audiofile, start, end "
                             "FROM outgoing WHERE url=?", (uri,))
             entry = db_curs.fetchone()
+            LOG.debug(entry)
             #URL exists?
             if entry is None:
                 raise MethodNotAllowedError(uri)
@@ -248,13 +290,13 @@ class Editor(auth.UserAuth):
 
             db_curs.execute("DELETE FROM outgoing WHERE url=?", (uri,))
             db_conn.commit()
-        LOG.info("Returning audio for project ID: {}".format(projectid))
+        LOG.info("Returning audio for project ID: {}".format(entry["projectid"]))
 
         # Check if audio range is available
         if entry["start"] is not None and entry["end"] is not None:
-            return {"mime": "audio/ogg", "filename": audiofile, "range" : (float(start), float(end))}
+            return {"mime": "audio/ogg", "filename": entry["audiofile"], "range" : (float(entry["start"]), float(entry["end"]))}
         else:
-            return {"mime": "audio/ogg", "filename": audiofile}
+            return {"mime": "audio/ogg", "filename": entry["audiofile"]}
 
 
     def incoming(self, uri, data):
@@ -279,7 +321,7 @@ class Editor(auth.UserAuth):
         #handler(data, projectid, taskid) #will throw exception if not successful
         #TODO: I don't think the servicetype uis needed
 
-        self._incoming_speech(data, projectid, taskid)
+        self._incoming_speech(data, entry["projectid"], entry["taskid"])
 
         #Cleanup DB
         with sqlite.connect(self._config['projectdb']) as db_conn:
@@ -287,7 +329,7 @@ class Editor(auth.UserAuth):
             db_curs.execute("DELETE FROM incoming "
                             "WHERE url=?", (uri,))
             db_conn.commit()
-        LOG.info("Incoming data processed for project ID: {}, task ID: {}".format(projectid, taskid))
+        LOG.info("Incoming data processed for project ID: {}, task ID: {}".format(entry["projectid"], entry["taskid"]))
         return "Request successful!"
 
 
@@ -332,7 +374,7 @@ class Editor(auth.UserAuth):
                 task = dict(db_curs.fetchone())
 
                 #TODO: if something goes wrong here....
-                repo.check()
+                repo.check(os.path.dirname(task["textfile"]))
                 with codecs.open(task["textfile"], "w", "utf-8") as f:
                     f.write(ctm)
 
@@ -352,8 +394,8 @@ class Editor(auth.UserAuth):
         """
             Convert the speech server output CTM format to editor format
         """
-        segments = [map(float, line.split()) for line in ctm.splitlines()]
-        segments.sort(key=lambda x:x[0]) #by starttime
+        #segments = [map(float, line.split()) for line in ctm.splitlines()]
+        #segments.sort(key=lambda x:x[0]) #by starttime
         LOG.info("CTM parsing successful..")
         return ctm
 
@@ -362,14 +404,25 @@ class Editor(auth.UserAuth):
             Re-assign this task to collator
         """
         auth.token_auth(request["token"], self._config["authdb"])
+        #TODO: must perform checks before doing this
         with sqlite.connect(self._config['projectdb']) as db_conn:
+            db_conn.row_factory = sqlite.Row
             db_curs = db_conn.cursor()
-            db_curs.execute("UPDATE T{} SET ownership=1 WHERE taskid=? AND projectid=?".format(year), (request["taskid"], request["projectid"]))
+
+            db_curs.execute("SELECT * FROM projects WHERE projectid=?", (request["projectid"],))
+            project = db_curs.fetchone()
+            if project is None:
+                raise NotFoundError("Project not found")
+            project = dict(project)
+
+            db_curs.execute("UPDATE T{} SET ownership=1 WHERE taskid=? AND projectid=?".format(project["year"]), (request["taskid"], request["projectid"]))
             db_conn.commit()
 
-    def unlock_task(self, request):
+        return "Task Marked on Done!"
+
+    def cancel_job(self, request):
         """
-            Unlock a broken project
+            Cancel speech job
         """
         auth.token_auth(request["token"], self._config["authdb"])
         with sqlite.connect(self._config['projectdb']) as db_conn:
@@ -399,6 +452,39 @@ class Editor(auth.UserAuth):
             db_curs.execute("DELETE FROM outgoing WHERE projectid=? AND audiofile=? AND start=? AND end=?",
                 (request["projectid"], project["audiofile"], task["start"], task["end"]))
             db_conn.commit()
+
+        return "Speech job cancelled"
+
+    def update_task(self, request):
+        """
+            Modify a task field
+        """
+        auth.token_auth(request["token"], self._config["authdb"])
+        with sqlite.connect(self._config['projectdb']) as db_conn:
+            db_conn.row_factory = sqlite.Row
+            db_curs = db_conn.cursor()
+
+            db_curs.execute("SELECT * FROM projects WHERE projectid=?", (request["projectid"],))
+            project = db_curs.fetchone()
+            if project is None:
+                raise NotFoundError("Project not found")
+            project = dict(project)
+
+            db_curs.execute("SELECT * FROM T{} WHERE taskid=? AND projectid=?".format(project["year"]), (request["taskid"], request["projectid"]))
+            task = db_curs.fetchone()
+            if task is None:
+                raise NotFoundError("Task not found")
+            task = dict(task)
+
+            if request["field"] not in task:
+                raise NotFoundError("Task does not have field: {}".format(request["field"]))
+
+            db_curs.execute("UPDATE T{} SET {}=? WHERE taskid=? AND projectid=?".format(project["year"], request["field"]),
+                (request["value"], request["taskid"], request["projectid"]))
+            db_conn.commit()
+
+        return "Task updated"
+
 
 if __name__ == "__main__":
     pass

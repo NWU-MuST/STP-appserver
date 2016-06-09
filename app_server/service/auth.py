@@ -30,13 +30,13 @@ def token_auth(token, authdb):
         db_curs.execute("SELECT * FROM tokens WHERE token=?", (token,))
         entry = db_curs.fetchone()
         if entry is None:
-            raise NotAuthorizedError
+            raise NotAuthorizedError("Token does not exist!")
         else:
             token, username, expiry = entry
             if time.time() > expiry:
                 db_curs.execute("DELETE FROM tokens WHERE token=?", (token,)) #remove expired token
                 db_conn.commit()
-                raise NotAuthorizedError
+                raise NotAuthorizedError("Token has been expired!")
     return username
 
 class UserAuth(object):

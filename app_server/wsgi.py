@@ -77,12 +77,13 @@ def application(env, start_response):
                 (start, end) = d['range']
                 start = fix_oggsplt_time(start)
                 end = fix_oggsplt_time(end)
-                cmd = "oggsplt {} {} {} -o -".format(d["filename"], start, end)
+                cmd = "mp3splt {} {} {} -o -".format(d["filename"], start, end)
                 p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
                 (child_stdout, child_stderr) = (p.stdout, p.stderr)
                 data = child_stdout.read()
+                # MP3SPLT writes to stderr - just parse for errors
                 err = child_stderr.read()
-                if len(err) != 0:
+                if err.lower().find('error:') != -1 or err.lower().find('warning:') != -1:
                     LOG.error(err)
                     raise RuntimeError("Cannot supply task's audio data!")
 

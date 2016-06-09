@@ -33,7 +33,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     outfn = args.outfn
     
-    salt = bcrypt.gensalt()
+    salt = bcrypt.gensalt(prefix=b"2a")
     pwhash = bcrypt.hashpw(args.rootpass, salt)
     
     db_conn = create_new_db(outfn)

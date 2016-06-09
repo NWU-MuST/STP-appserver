@@ -1,7 +1,9 @@
 {
     "MODULES" : {
 	"service.projects.Projects" : "config/projects.json",
-	"service.projects.Admin" : "config/projects_admin.json"
+	"service.projects.Admin" : "config/projects_admin.json",
+	"service.editor.Editor" : "config/editor.json",
+	"service.editor.Admin" : "config/editor_admin.json"
     },
 
     "HANDLERS" : {
@@ -40,22 +42,65 @@
 	    "/projects/assigntasks" : { "method" : "service.projects.Projects.assign_tasks",
 					"parameters" : ["token", "projectid"] },
 	    "/projects/diarizeaudio" : { "method" : "service.projects.Projects.diarize_audio",
-					 "parameters" : ["token", "projectid"] }
+					 "parameters" : ["token", "projectid"] },
+
+	    "/editor/admin/login" : { "method" : "service.editor.Admin.login",
+					"parameters" : ["username", "password"] },
+	    "/editor/admin/logout" : { "method" : "service.editor.Admin.logout",
+					 "parameters" : ["token"] },
+	    "/editor/admin/adduser" : { "method" : "service.editor.Admin.add_user",
+					  "parameters" : ["token", "username", "password", "name", "surname", "email"] },
+	    "/editor/admin/deluser" : { "method" : "service.editor.Admin.del_user",
+					  "parameters" : ["token", "username"] },
+	    "/editor/admin/userinfo" : { "method" : "service.editor.Admin.get_uinfo",
+					   "parameters" : ["username", "token"] },
+	    "/editor/admin/updateuser" : { "method" : "service.editor.Admin.update_user",
+					     "parameters" : ["username", "token"] },
+	    "/editor/admin/loadusers" : { "method" : "service.editor.Admin.get_users",
+					    "parameters" : ["token"] },
+
+	    "/editor/login" : { "method" : "service.editor.Editor.login",
+				  "parameters" : ["username", "password"] },
+	    "/editor/logout" : { "method" : "service.editor.Editor.logout",
+				   "parameters" : ["token"] },
+	    "/editor/loadtasks" : { "method" : "service.editor.Editor.load_tasks",
+				   "parameters" : ["token"] },
+	    "/editor/tasktext" : { "method" : "service.editor.Editor.task_text",
+				   "parameters" : ["token", "taskid", "projectid"] },
+	    "/editor/savetext" : { "method" : "service.editor.Editor.save_text",
+				   "parameters" : ["token", "taskid", "projectid", "text"] },
+	    "/editor/speechjob" : { "method" : "service.editor.Editor.speech_job",
+				   "parameters" : ["token", "taskid", "projectid", "service"] },
+	    "/editor/taskdone" : { "method" : "service.editor.Editor.task_done",
+				   "parameters" : ["token", "taskid", "projectid"] },
+	    "/editor/canceljob" : { "method" : "service.editor.Editor.cancel_job",
+				   "parameters" : ["token", "taskid", "projectid"] },
+	    "/editor/updatetask" : { "method" : "service.editor.Editor.update_task",
+				   "parameters" : ["token", "taskid", "projectid", "field", "value"] }
+
 	},
-	
+
     	"GET" : {
     	    "/projects/projectaudio" : { "method" : "service.projects.Projects.project_audio",
-					 "parameters" : ["token", "projectid"] }
+					 "parameters" : ["token", "projectid"] },
+    	    "/editor/taskaudio" : { "method" : "service.editor.Editor.task_audio",
+					 "parameters" : ["token", "projectid", "taskid"] }
 	},
 
     	"PUT" : {}
     },
 
-    "TEMPIO_MODULES": ["service.projects.Projects"],
-    
+    "TEMPIO_MODULES": {"projects" : "service.projects.Projects", "editor" : "service.editor.Editor"},
+   
     "logging" : {
-	"dir" : "/mnt/stp/",
-	"format" : "%(asctime)s :: %(name)s :: %(levelname)s :: %(message)s"
-    }
-    
+    	"dir" : "/mnt/stp/",
+    	"format" : "%(asctime)s :: %(name)s :: %(levelname)s :: %(message)s"
+    },
+
+    "speechserver" : {
+        "username" : "appserver",
+        "password" : "VFKNZd4mD832VDcV",
+        "login" : "jobs/login",
+        "logout" : "jobs/logout"
+    }   
 }
