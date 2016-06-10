@@ -10,6 +10,8 @@ import time
 import datetime
 import base64
 import os
+import shutil
+import subprocess
 import logging
 try:
     from sqlite3 import dbapi2 as sqlite
@@ -26,9 +28,12 @@ import repo
 from httperrs import *
 
 LOG = logging.getLogger("APP.PROJECTS")
+DEBUG = 10 
+INFO = 20
 
 SPEECHSERVER = os.getenv("SPEECHSERVER"); assert SPEECHSERVER is not None
 APPSERVER = os.getenv("APPSERVER"); assert APPSERVER is not None
+SOXI_BIN = "/usr/bin/soxi"; assert os.stat(SOXI_BIN)
 
 class Admin(admin.Admin):
     pass
@@ -80,7 +85,7 @@ class Projects(auth.UserAuth):
                                "creation": time.time(),
                                "assigned": "N"})
             db.create_tasktable(year)
-
+        ##########
         LOG.info("ProjID:{} Created new project".format(projectid))
         return {'projectid' : projectid}
 
@@ -91,23 +96,24 @@ class Projects(auth.UserAuth):
 
         with self.db as db:
             projects = db.get_projects(where={"username": username})
+        ##########
         LOG.info("User:{} Returning list of projects".format(username))
         return {'projects' : projects}
 
     def delete_project(self, request):
-        """Delete project and remove tasks, this will currently refuse if
-           tasks have already been assigned: The idea is that a UI
-           mechanism will make sure the user is not acting lightly and
-           will explicitly set assigned=N before running this.
+        """Delete project and remove tasks, including all associated files.
         """
         auth.token_auth(request["token"], self._config["authdb"])
-        
+
+        #Clear project from DB
         with self.db as db:
-            if db.project_assigned(request["projectid"]):
-                message = "ProjID:{} Cannot be deleted because tasks are currently assigned".format(request["projectid"])
-                LOG.debug(message)
-                raise ConflictError(message)
+            row = db.get_project(request["projectid"], ["audiofile"])
             db.delete_project(request["projectid"])
+        #Remove any files associated with project
+        if row:
+            projectpath = os.path.dirname(row["audiofile"])
+        shutil.rmtree(projectpath, ignore_errors=True)
+        ##########
         LOG.info("ProjID:{} Deleted project".format(request["projectid"]))
         return "Project deleted!"
 
@@ -117,14 +123,13 @@ class Projects(auth.UserAuth):
         auth.token_auth(request["token"], self._config["authdb"])
 
         with self.db as db:
-            #GET PROJECT IF NOT LOCKED
+            #This will lock the DB:
+            db.check_project(projectid, check_err=True) #later "try" to recover from certain issues
             project = db.get_project(request["projectid"],
-                                     fields=["projectname", "category", "year"],
-                                     check_lock=True,
-                                     also_check_err=True) #later "try" to recover from certain issues
-            #GET TASKS
+                                     fields=["projectname", "category", "year"])
             tasks = db.get_tasks(request["projectid"],
                                  fields=["editor", "collator", "start", "end", "language"])
+        ##########
         LOG.info("ProjID: {} Returning loaded project".format(request["projectid"]))
         return {'project' : project, 'tasks' : tasks}
 
@@ -134,38 +139,50 @@ class Projects(auth.UserAuth):
            usually after partitioning (e.g. via speech diarize or the
            UI or both). To update assignees or toggle permissions
            after assignment use `update_project`
+
+           DEMIT: The user also needs to save other project meta-info
         """
         auth.token_auth(request["token"], self._config["authdb"])
-        #DEMIT: Does the user also need to save other project meta-info (maybe in `update_project`)?
-        #DEMIT: Where are we checking for contiguous non-overlapping exhaustive segments (maybe enforce in UI)?
+
+        #Check whether all necessary fields are defined for each task
+        fields = ("taskid", "projectid", "editor", "collator", "start", "end", "language")
+        tasks = list(request["tasks"])
+        for task in tasks:
+            if not all(k in task for k in fields):
+                log_raise("ProjID:{} Tasks do not contain all the required fields".format(required["projectid"]),
+                          BadRequestError)
+
+        #Check received tasks are: contiguous, non-overlapping,
+        #completely spanning audiofile (implicitly: audio uploaded)
+        tasks.sort(key=lambda x:x["start"])
+        prevtask_end = 0.0
+        for task in tasks:
+            if not approx_eq(prevtask_end, task["start"]):
+                log_raise("ProjID:{} Tasks times not contiguous and non-overlapping".format(request["projectid"]),
+                          BadRequestError)
+            prevtask_end = task["end"]
 
         with self.db as db:
-            #CHECK LOCKED (This will lock the DB)
-            db.check_project(request["projectid"], also_check_err=True)
-            #CHECK ASSIGNED
+            #This will lock the DB:
+            db.check_project(projectid, check_err=True) #later "try" to recover from certain issues
+            row = db.get_project(request["projectid"], fields=["audiodur"])
+            #Check audio has been uploaded
+            if row["audiodur"] is None:
+                log_raise("ProjID:{} No audio has been uploaded".format(request["projectid"]),
+                          ConflictError)
+            #Check tasks span audio
+            if not approx_eq(row["audiodur"], prevtask_end):
+                log_raise("ProjID:{} Tasks do not span entire audio file".format(request["projectid"]),
+                          BadRequestError)
+            #Check whether tasks already assigned
             if db.project_assigned(request["projectid"]):
-                message = "ProjID:{} Cannot be saved because tasks are already assigned (use: update_project())".format(request["projectid"])
-                LOG.debug(message)
-                raise ConflictError(message)
-
-            #DELETE CURRENT LIST OF TASKS AND RECREATE FROM INPUT
+                log_raise("ProjID:{} Cannot be re-saved because tasks are already assigned (use: update_project())".format(request["projectid"]),
+                          ConflictError)
+            #Delete current list of tasks and re-insert from input
             self.delete_tasks(projectid)
-            #DEMIT: IN PROGRESS
-            
-
-        with sqlite.connect(self._config['projectdb']) as db_conn:
-
-            tasks_in = request["tasks"] #A list of dicts
-            tasks_in.sort(key=lambda x:x["start"])
-            tasks_out = []
-            for taskid, task in enumerate(tasks_in):
-                tasks_out.append((taskid, request["projectid"], task["editor"], task["collator"], float(task["start"]), float(task["end"]), task["language"]))
-
-            db_curs.executemany("INSERT INTO {} ".format(tasktable) +\
-                                "(taskid, projectid, editor, collator, start, end, language)"
-                                "VALUES(?,?,?,?,?,?,?)", tasks_out)
-            db_conn.commit()
-
+            self.insert_tasks(projectid, tasks, fields)
+            #DEMIT: Also want to update other project meta-info
+        ##########
         LOG.info("ProjID:{} Saved project".format(request["projectid"]))
         return 'Project saved!'
 
@@ -175,25 +192,24 @@ class Projects(auth.UserAuth):
             - Ensure that tasks table is fully completed (i.a. editors assigned)
             - Sets permissions appropriately
             - Sets project state to `assigned` disallowing revision of task segments
+
+           DEMIT: Check tasks present.
         """
         auth.token_auth(request["token"], self._config["authdb"])
 
         with self.db as db:
-            #CHECK PROJECT (This will lock the DB)
-            row = db.get_project(request["projectid"],
-                                 fields=["audiofile"],
-                                 check_lock=True,
-                                 also_check_err=True) #later "try" to recover from certain issues
+            #This will lock the DB:
+            db.check_project(projectid, check_err=True) #later "try" to recover from certain issues
             if db.project_assigned(request["projectid"]):
-                message = "Tasks have already been assigned"
-                LOG.debug(message)
-                raise ConflictError(message)
-            #FETCH TASKS
+                log_raise("ProjID:{} Tasks have already been assigned".format(request["projectid"]),
+                          ConflictError)
+            #Fetch tasks and project info
+            row = db.get_project(request["projectid"], fields=["audiofile"])
             tasks = db.get_tasks(request["projectid"])
-            #LOCK THE PROJECT
+            #Lock the project
             db.lock_project(request["projectid"], jobid="assign_tasks")
         try:
-            #CREATE FILES AND UPDATE FIELDS
+            #Create files and update fields
             textname = "text"
             updatefields = ("editor", "collator", "textfile", "creation", "modified", "commitid", "ownership")
             audiodir = os.path.dirname(row["audiofile"])
@@ -206,7 +222,7 @@ class Projects(auth.UserAuth):
                 task["commitid"], task["creation"] = repo.commit(textdir, textname, "task assigned")
                 task["modified"] = task["creation"]
                 task["ownership"] = 0 #Actually need an ownership ENUM: {0: "editor", 1: "collator"}
-            #UPDATE FIELDS AND UNLOCK PROJECT
+            #Update fields and unlock project
             with self.db as db:
                 db.update_tasks(request["projectid"], tasks, fields=updatefields)
                 db.update_project(request["projectid"], fields={"assigned": "Y", "jobid": None})
@@ -222,21 +238,27 @@ class Projects(auth.UserAuth):
     def update_project(self, request):
         """Update assignees and/or permissions on tasks and/or other project
            meta information. Can only be run after task assignment.
+
+           DEMIT: Task ID valid?
         """
+        raise NotImplementedError
+
+    def unlock_project(self, request):
         raise NotImplementedError
 
 
     def upload_audio(self, request):
-        """
-            Audio uploaded to project space
-            TODO: convert audio to OGG Vorbis, mp3splt for editor
+        """Audio uploaded to project space
+           TODO: convert audio to OGG Vorbis, mp3splt for editor
+
+           DEMIT: Must clear task table.
         """
         username = auth.token_auth(request["token"], self._config["authdb"])
 
         #If audiofile already exists remove it
         with self.db as db:
             row = db.get_project(request["projectid"], ["audiofile"])
-            if row["audiofile"]:
+            if row and row["audiofile"]:
                 os.remove(audiofile)
 
         date_now = datetime.datetime.now()
@@ -247,10 +269,11 @@ class Projects(auth.UserAuth):
         new_filename = os.path.join(location, base64.urlsafe_b64encode(str(uuid.uuid4())))
         with open(new_filename, 'wb') as f:
             f.write(request['file'])
+        audiodur = float(subprocess.check_output([SOXI_BIN, "-D", new_filename]))
 
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_curs = db_conn.cursor()
-            db_curs.execute("UPDATE projects SET audiofile=? WHERE projectid=?", (new_filename, request["projectid"]))
+            db_curs.execute("UPDATE projects SET audiofile=?, audiodur=? WHERE projectid=?", (new_filename, audiodur, request["projectid"]))
             db_conn.commit()
         LOG.info("ProjID:{} Audio uploaded".format(request["projectid"]))
         return 'Audio Saved!'
@@ -258,6 +281,9 @@ class Projects(auth.UserAuth):
     def project_audio(self, request):
         """
             Make audio available for project user
+        
+            DEMIT: Rename to get_audio
+            DEMIT: Check audio exists
         """
         auth.token_auth(request["token"], self._config["authdb"])
 
@@ -269,6 +295,8 @@ class Projects(auth.UserAuth):
         return {'filename' : audiofile[0]}
 
     def diarize_audio(self, request):
+        """ DEMIT: Check for audio...
+        """
         auth.token_auth(request["token"], self._config["authdb"])
         db = sqlite.connect(self._config['projectdb'])
         db.row_factory = sqlite.Row
@@ -405,6 +433,13 @@ class Projects(auth.UserAuth):
 
 
 class ProjectDB(sqlite.Connection):
+    """DEMIT: Review lock/err checking structure/parameters
+
+       DEMIT: Have to be careful with the implementation in here: We
+       actually don't want any non-SQLite exceptions to happen here
+       since that may invalidate assumptions about rollback in higher
+       level code. The exception is `check_project`
+    """
 
     def lock(self):
         self.execute("BEGIN IMMEDIATE")
@@ -443,7 +478,15 @@ class ProjectDB(sqlite.Connection):
             return []
         return map(dict, rows)
 
-    def check_project(self, projectid, also_check_err=False):
+    def check_project(self, projectid, check_err=False):
+        """This should be run before attempting to make changes to a project,
+           it does the following:
+             -- Locks the DB
+             -- Checks whether the project exists
+             -- Check whether the project is "locked"
+             -- Optionally check whether the project has `errstatus` set
+        """
+        self.lock()
         row = self.execute("SELECT jobid, errstatus FROM projects WHERE projectid=?", (projectid,)).fetchone()
         if row is None: #project exists?
             message = "ProjID:{} Project not found".format(projectid)
@@ -454,23 +497,21 @@ class ProjectDB(sqlite.Connection):
             message = "ProjID:{} This project is currently locked with jobid: {}".format(projectid, jobid)
             LOG.debug(message)
             raise ConflictError(message)
-        if also_check_err and row["errstatus"]:
+        if check_err and row["errstatus"]:
             message = "ProjID:{} A previous job resulted in error: '{}'".format(projectid, errstatus)
             LOG.debug(message)
             raise ConflictError(message)
 
-    def get_project(self, projectid, fields, check_lock=False, also_check_err=False):
-        """Check whether project exists and is clean before returning
-           fields...
+    def get_project(self, projectid, fields):
+        """Should typically run `check_project` before doing this.
         """
-        if check_lock or also_check_err:
-            self.lock() #lock the DB
-            self.check_project(projectid, also_check_err=also_check_err)
-
         fields = set(fields)
         query = "SELECT {} FROM projects WHERE projectid=?".format(", ".join(fields))
         row = self.execute(query, (projectid,)).fetchone()
-        row = dict(row)
+        try:
+            row = dict(row)
+        except TypeError:
+            row = {}
         return row
 
     def delete_project(self, projectid):
@@ -478,17 +519,11 @@ class ProjectDB(sqlite.Connection):
         self.execute("DELETE FROM projects WHERE projectid=?", (projectid,))
         
 
-    def project_assigned(self, projectid, check_lock=False, also_check_err=False):
-        return self.get_project(projectid,
-                                fields=("assigned",),
-                                check_lock=check_lock,
-                                also_check_err=also_check_err)["assigned"].upper() == "Y"
+    def project_assigned(self, projectid):
+        return self.get_project(projectid, fields=["assigned"])["assigned"].upper() == "Y"
 
-    def get_tasks(self, projectid, fields=None, check_lock=False, also_check_err=False):
-        year = self.get_project(projectid,
-                                fields=("year",),
-                                check_lock=check_lock,
-                                also_check_err=also_check_err)["year"]
+    def get_tasks(self, projectid, fields=None):
+        year = self.get_project(projectid, fields=["year"])["year"]
         tasktable = "T{}".format(year)
         if not fields is None:
             selectq = ", ".join(fields)
@@ -503,16 +538,21 @@ class ProjectDB(sqlite.Connection):
         return map(dict, tasks)
 
     def delete_tasks(self, projectid):
-        year = self.get_project(projectid,
-                                fields=("year",),
-                                check_lock=False,
-                                also_check_err=False)["year"]
+        year = self.get_project(projectid, fields=["year"])["year"]
         tasktable = "T{}".format(year)
         self.execute("DELETE FROM {} ".format(tasktable) +\
                      "WHERE projectid=?", (projectid,))
 
-    def create_tasks(self, projectid, tasks):
-        raise NotImplementedError
+    def insert_tasks(self, projectid, tasks, fields):
+        year = self.get_project(projectid, fields=["year"])["year"]
+        tasktable = "T{}".format(year)
+        #Build query
+        fieldnames = list(fields)
+        fieldsq = ", ".join(fieldnames)
+        valuesq = ",".join(["?"] * len(fieldnames))
+        for task in tasks:
+            self.execute("INSERT INTO {} {} VALUES({})".format(tasktable, fieldsq, valuesq),
+                         tuple(task[fieldname] for fieldname in fieldnames))
 
     def lock_project(self, projectid, jobid=None):
         jobid = str(jobid)
@@ -529,21 +569,18 @@ class ProjectDB(sqlite.Connection):
                                            projectid))
 
 
-    def update_tasks(self, projectid, tasks, fields, check_alldef=True, check_lock=False, also_check_err=False):
-        year = self.get_project(projectid,
-                                fields=("year",),
-                                check_lock=check_lock,
-                                also_check_err=also_check_err)["year"]
+    def update_tasks(self, projectid, tasks, fields, check_alldef=True):
+        year = self.get_project(projectid, fields=["year"])["year"]
         tasktable = "T{}".format(year)
-        #Make sure all required fields are set
+        #Make sure all required fields are set (DEMIT: Maybe this
+        #should be done at higher level -- we don't want any
+        #non-SQLite exceptions to be raised here)
         if check_alldef:
             undefined = (None, "")
             for task in tasks:
-                try:
-                    assert all(v not in undefined for k, v in task.iteritems() if k in fields), "Not all necessary task fields are defined for assign_tasks()"
-                except AssertionError as e:
-                    LOG.debug("ProjID:{} {}".format(projectid, e))
-                    raise
+                if not all(v not in undefined for k, v in task.iteritems() if k in fields):
+                    log_raise("ProjID:{} Not all necessary task fields are defined for assign_tasks()".format(projectid),
+                              Exception)
         #Commit to DB (currently fail silently if nonexistent)
         for task in tasks:
             self.execute("UPDATE {} ".format(tasktable) +\
@@ -558,6 +595,13 @@ class ProjectDB(sqlite.Connection):
                      "SET {} ".format(setq) +\
                      "WHERE projectid=?", tuple([fields[k] for k in fieldkeys] + [projectid]))
 
+## Helper funcs
+def approx_eq(a, b, epsilon=0.01):
+    return abs(a - b) < epsilon
+
+def log_raise(message, exception=Exception, level=DEBUG):
+    LOG.log(level, message)
+    raise exception(message)
 
 if __name__ == "__main__":
     pass

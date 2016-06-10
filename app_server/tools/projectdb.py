@@ -27,6 +27,7 @@ if __name__ == "__main__":
                                                                                               "category VARCHAR(36)",
                                                                                               "username VARCHAR(20)",
                                                                                               "audiofile VARCHAR(128)",
+                                                                                              "audiodur REAL",
                                                                                               "year INTEGER",
                                                                                               "creation REAL",
                                                                                               "assigned VARCHAR(1)",
