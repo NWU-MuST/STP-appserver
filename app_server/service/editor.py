@@ -87,7 +87,7 @@ class Editor(auth.UserAuth):
 
             return tasks
 
-    def task_audio(self, request):
+    def get_audio(self, request):
         """
             Return the audio for this specific task
         """
@@ -111,7 +111,7 @@ class Editor(auth.UserAuth):
 
         return {"filename" : project["audiofile"], "range" : audiorange, "mime" : "audio/ogg"}
 
-    def task_text(self, request):
+    def get_text(self, request):
         """
             Return the text data for this specific task
         """
@@ -172,22 +172,10 @@ class Editor(auth.UserAuth):
 
         return "Text Saved!"
 
-    def speech_job(self, request):
+    def _get_project_task(self, request):
         """
-            Request speech processing: diarize, speech recognition or alignment
+            Return the project and tasks for this request
         """
-        auth.token_auth(request["token"], self._config["authdb"])
-
-        # Check if service exists
-        if request["service"] not in self._config["speechservices"]["services"]:
-            raise NotFoundError("Requested speech service not available")
-
-        # Check all parameters
-        for value in self._config["speechservices"]["services"][request["service"]]["require"]:
-            if value not in request:
-                raise BadRequestError("Missing parameter in request: {}".format(value))
-
-        #Attempt to "lock" projects and create I/O access
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_conn.row_factory = sqlite.Row
             db_curs = db_conn.cursor()
@@ -199,7 +187,7 @@ class Editor(auth.UserAuth):
                 raise NotFoundError("Project not found")
             project = dict(project)
 
-            db_curs.execute("SELECT start, end, jobid "
+            db_curs.execute("SELECT start, end, textfile, jobid "
                             "FROM T{} "
                             "WHERE taskid=? AND projectid=?".format(project["year"]), (request["taskid"],request["projectid"]))
             task = db_curs.fetchone()
@@ -213,6 +201,79 @@ class Editor(auth.UserAuth):
             if task["jobid"]:
                 db_conn.commit()
                 raise ConflictError("A job with id '{}' is already pending on this task".format(jobid))
+
+        return project, task
+
+    def diarize(self, request):
+        """
+            Diarize the audio segment
+            This will be run on an empty text file only
+        """
+        auth.token_auth(request["token"], self._config["authdb"])
+        project, task = self._get_project_task(request)
+        if os.path.getsize(task["textfile"]) != 0:
+            raise BadRequestError("Cannot run diarize since the document is not empty!")
+        request["service"] = "diarize"
+        return self._speech_job(request, project, task, "diarize", "default", {})
+
+    def recognize(self, request):
+        """
+            Recognize spoken audio in portions that do not contain text
+        """
+        auth.token_auth(request["token"], self._config["authdb"])
+        project, task = self._get_project_task(request)
+        params = self._recognize_segments(task["textfile"])
+        params["language"] = "English"
+        request["service"] = "recognize"
+        return self._speech_job(request, project, task, "recognize", "sgmm", params)
+
+    def _recognize_segments(self, textfile):
+        """
+            Identify empty portions
+            TODO: must fix format
+        """
+        #TODO: should force ckeditor to use existing tools
+        return {"segments" : [(10.0, 20.0, "SPK1"), (20.0, 30.0, "SPK2")]}
+
+    def align(self, request):
+        """
+            Align text to audio for portions that contain text
+        """
+        auth.token_auth(request["token"], self._config["authdb"])
+        project, task = self._get_project_task(request)
+        params = self._align_segments(task["textfile"])
+        params["language"] = "English"
+        request["service"] = "align"
+        return self._speech_job(request, project, task, "align", "sgmm", params)
+
+    def _align_segments(self, textfile):
+        """
+            Pass back segments that contain text
+            TODO: should fix format
+        """
+        #TODO: should force ckeditor to use existing tools
+
+        #TODO: Enable text compression
+        # import cStringIO
+        # import gzip
+        # out = cStringIO.StringIO()
+        # with gzip.GzipFile(fileobj=out, mode="w") as f:
+        #     f.write("This is mike number one, isn't this a lot of fun?")
+        # out.getvalue()
+        #OR
+        # compressed_value = s.encode("zlib")
+        # plain_string_again = compressed_value.decode("zlib")
+        return {"segments" : [(10.0, 20.0, "SPK1"), (20.0, 30.0, "SPK2")],
+                "text" : ["Some text for this portion", "Text for the next portion"]}
+
+    def _speech_job(self, request, project, task, service, subsystem, parameters):
+        """
+            Submit a speech job
+        """
+        with sqlite.connect(self._config['projectdb']) as db_conn:
+            db_conn.row_factory = sqlite.Row
+            db_curs = db_conn.cursor()
+            db_curs.execute("BEGIN IMMEDIATE") #lock the db early...
 
             #Setup I/O access
             inurl = auth.gen_token()
@@ -235,14 +296,13 @@ class Editor(auth.UserAuth):
         #TODO: fix editor reference
         jobreq = {"token" : self._speech.token(), "getaudio": os.path.join(APPSERVER, "editor", outurl),
                    "putresult": os.path.join(APPSERVER, "editor", inurl)}
-        jobreq["service"] = request["service"]
-        jobreq["subsystem"] = self._config["speechservices"]["services"][request["service"]]["subsystem"]
-        for value in self._config["speechservices"]["services"][request["service"]]["require"]:
-            jobreq[value] = request[value]
+        jobreq["service"] = service
+        jobreq["subsystem"] = subsystem
+        jobreq.update(parameters)
 
-        LOG.debug(os.path.join(SPEECHSERVER, self._config["speechservices"]["url"]))
+        LOG.debug(os.path.join(SPEECHSERVER, self._config["speechservices"]))
         LOG.debug("{}".format(jobreq))
-        reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]["url"]), data=json.dumps(jobreq))
+        reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]), data=json.dumps(jobreq))
         reqstatus = reqstatus.json()
         #reqstatus = {"jobid": auth.gen_token()} #DEMIT: dummy call for testing!
 
@@ -301,10 +361,9 @@ class Editor(auth.UserAuth):
 
         # Check if audio range is available
         if entry["start"] is not None and entry["end"] is not None:
-            return {"mime": "audio/ogg", "filename": entry["audiofile"], "range" : (float(entry["start"]), float(entry["end"]))}
+            return {"mime": "audio/ogg", "filename": entry["file"], "range" : (float(entry["start"]), float(entry["end"]))}
         else:
-            return {"mime": "audio/ogg", "filename": entry["audiofile"]}
-
+            return {"mime": "audio/ogg", "filename": entry["file"]}
 
     def incoming(self, uri, data):
         """
@@ -328,7 +387,8 @@ class Editor(auth.UserAuth):
         #handler(data, projectid, taskid) #will throw exception if not successful
         #TODO: I don't think the servicetype uis needed
 
-        self._incoming_speech(data, entry["projectid"], entry["taskid"])
+        handler = getattr(self, "_incoming_{}".format(entry["servicetype"]))
+        handler(data, entry["projectid"], entry["taskid"])
 
         #Cleanup DB
         with sqlite.connect(self._config['projectdb']) as db_conn:
@@ -340,7 +400,7 @@ class Editor(auth.UserAuth):
         return "Request successful!"
 
 
-    def _incoming_speech(self, data, projectid, taskid):
+    def _incoming_diarize(self, data, projectid, taskid):
         """
         """
         with sqlite.connect(self._config['projectdb']) as db_conn:
@@ -386,16 +446,125 @@ class Editor(auth.UserAuth):
                     f.write(ctm)
 
                 task["commitid"], task["modified"] = repo.commit(os.path.dirname(task["textfile"]), os.path.basename(task["textfile"]), "Changes saved")
-                task["errstatus"] = None
-                task["jobid"] = None
-                db_curs.execute("UPDATE T{} SET commitid=?, modified=? WHERE taskid=? AND projectid=?".format(year),
-                    (task["commitid"], task["modified"], taskid, projectid))
+                db_curs.execute("UPDATE T{} SET commitid=?, modified=?, jobid=?, errstatus=? WHERE taskid=? AND projectid=?".format(year),
+                    (task["commitid"], task["modified"], None, None, taskid, projectid))
 
             else: #"unlock" and recover error status
                 LOG.error("Speech processing failure (Project ID: {}, Task ID: {}, Job ID: {})".format(projectid, taskid, jobid))
                 db_curs.execute("UPDATE T{} SET jobid=?, errstatus=? WHERE taskid=? AND projectid=?".format(year), (None, data["errstatus"], taskid, projectid))
             db_conn.commit()
         LOG.info("Speech processing result received successfully for project ID: {}, Task ID: {}".format(projectid, taskid))
+
+    def _incoming_recognize(self, data, projectid, taskid):
+        """
+        """
+        with sqlite.connect(self._config['projectdb']) as db_conn:
+            db_conn.row_factory = sqlite.Row
+            db_curs = db_conn.cursor()
+
+            # Get task table
+            db_curs.execute("SELECT year FROM projects WHERE projectid=?", (projectid,))
+            entry = db_curs.fetchone()
+            if entry is None:
+                LOG.error("Incoming speech processing error (Project ID: {}, Task ID: {}, Job ID: {})".format(projectid, taskid, jobid))
+                db_curs.execute("UPDATE projects SET jobid=?, errstatus=? WHERE projectid=?", (None, data["errstatus"], projectid))
+                db_conn.commit()
+                raise NotFoundError("Project not found!")
+            entry = dict(entry)
+            year = entry["year"]
+
+            # Fetch jobid
+            db_curs.execute("SELECT jobid "
+                            "FROM T{} "
+                            "WHERE taskid=? AND projectid=?".format(year), (taskid, projectid))
+            entry = db_curs.fetchone()
+            if entry is None:
+                LOG.error("Incoming speech processing error (Project ID: {}, Task ID: {}, Job ID: {})".format(projectid, taskid, jobid))
+                db_curs.execute("UPDATE projects SET jobid=?, errstatus=? WHERE projectid=?", (None, data["errstatus"], projectid))
+                db_conn.commit()
+                raise NotFoundError("Task not found!")
+            entry = dict(entry)
+            jobid = entry["jobid"]
+
+            #Need to check whether project exists?
+            if "CTM" in data: #all went well
+                LOG.info("Speech processing success (Project ID: {}, Task ID: {}, Job ID: {})".format(projectid, taskid, jobid))
+                #Parse CTM file
+                ctm = self._ctm_editor(data["CTM"])
+
+                db_curs.execute("SELECT * FROM T{} WHERE taskid=? AND projectid=?".format(year), (taskid, projectid))
+                task = dict(db_curs.fetchone())
+
+                #TODO: if something goes wrong here....
+                repo.check(os.path.dirname(task["textfile"]))
+                with codecs.open(task["textfile"], "w", "utf-8") as f:
+                    f.write(ctm)
+
+                task["commitid"], task["modified"] = repo.commit(os.path.dirname(task["textfile"]), os.path.basename(task["textfile"]), "Changes saved")
+                db_curs.execute("UPDATE T{} SET commitid=?, modified=?, jobid=?, errstatus=? WHERE taskid=? AND projectid=?".format(year),
+                    (task["commitid"], task["modified"], None, None, taskid, projectid))
+
+            else: #"unlock" and recover error status
+                LOG.error("Speech processing failure (Project ID: {}, Task ID: {}, Job ID: {})".format(projectid, taskid, jobid))
+                db_curs.execute("UPDATE T{} SET jobid=?, errstatus=? WHERE taskid=? AND projectid=?".format(year), (None, data["errstatus"], taskid, projectid))
+            db_conn.commit()
+        LOG.info("Speech processing result received successfully for project ID: {}, Task ID: {}".format(projectid, taskid))
+
+    def _incoming_align(self, data, projectid, taskid):
+        """
+        """
+        with sqlite.connect(self._config['projectdb']) as db_conn:
+            db_conn.row_factory = sqlite.Row
+            db_curs = db_conn.cursor()
+
+            # Get task table
+            db_curs.execute("SELECT year FROM projects WHERE projectid=?", (projectid,))
+            entry = db_curs.fetchone()
+            if entry is None:
+                LOG.error("Incoming speech processing error (Project ID: {}, Task ID: {}, Job ID: {})".format(projectid, taskid, jobid))
+                db_curs.execute("UPDATE projects SET jobid=?, errstatus=? WHERE projectid=?", (None, data["errstatus"], projectid))
+                db_conn.commit()
+                raise NotFoundError("Project not found!")
+            entry = dict(entry)
+            year = entry["year"]
+
+            # Fetch jobid
+            db_curs.execute("SELECT jobid "
+                            "FROM T{} "
+                            "WHERE taskid=? AND projectid=?".format(year), (taskid, projectid))
+            entry = db_curs.fetchone()
+            if entry is None:
+                LOG.error("Incoming speech processing error (Project ID: {}, Task ID: {}, Job ID: {})".format(projectid, taskid, jobid))
+                db_curs.execute("UPDATE projects SET jobid=?, errstatus=? WHERE projectid=?", (None, data["errstatus"], projectid))
+                db_conn.commit()
+                raise NotFoundError("Task not found!")
+            entry = dict(entry)
+            jobid = entry["jobid"]
+
+            #Need to check whether project exists?
+            if "CTM" in data: #all went well
+                LOG.info("Speech processing success (Project ID: {}, Task ID: {}, Job ID: {})".format(projectid, taskid, jobid))
+                #Parse CTM file
+                ctm = self._ctm_editor(data["CTM"])
+
+                db_curs.execute("SELECT * FROM T{} WHERE taskid=? AND projectid=?".format(year), (taskid, projectid))
+                task = dict(db_curs.fetchone())
+
+                #TODO: if something goes wrong here....
+                repo.check(os.path.dirname(task["textfile"]))
+                with codecs.open(task["textfile"], "w", "utf-8") as f:
+                    f.write(ctm)
+
+                task["commitid"], task["modified"] = repo.commit(os.path.dirname(task["textfile"]), os.path.basename(task["textfile"]), "Changes saved")
+                db_curs.execute("UPDATE T{} SET commitid=?, modified=?, jobid=?, errstatus=? WHERE taskid=? AND projectid=?".format(year),
+                    (task["commitid"], task["modified"], None, None, taskid, projectid))
+
+            else: #"unlock" and recover error status
+                LOG.error("Speech processing failure (Project ID: {}, Task ID: {}, Job ID: {})".format(projectid, taskid, jobid))
+                db_curs.execute("UPDATE T{} SET jobid=?, errstatus=? WHERE taskid=? AND projectid=?".format(year), (None, data["errstatus"], taskid, projectid))
+            db_conn.commit()
+        LOG.info("Speech processing result received successfully for project ID: {}, Task ID: {}".format(projectid, taskid))
+
 
     def _ctm_editor(self, ctm):
         """
@@ -425,12 +594,13 @@ class Editor(auth.UserAuth):
             db_curs.execute("UPDATE T{} SET ownership=1 WHERE taskid=? AND projectid=?".format(project["year"]), (request["taskid"], request["projectid"]))
             db_conn.commit()
 
-        return "Task Marked on Done!"
+        return "Task Marked as Done!"
 
-    def cancel_job(self, request):
+    def unlock_task(self, request):
         """
             Cancel speech job
         """
+        #TODO: either speech job or error
         auth.token_auth(request["token"], self._config["authdb"])
         with sqlite.connect(self._config['projectdb']) as db_conn:
             db_conn.row_factory = sqlite.Row
@@ -461,51 +631,6 @@ class Editor(auth.UserAuth):
             db_conn.commit()
 
         return "Speech job cancelled"
-
-    def update_task(self, request):
-        """
-            Modify a task field
-        """
-        #TODO: user can change anything on the task -- is dangerous
-
-        auth.token_auth(request["token"], self._config["authdb"])
-        with sqlite.connect(self._config['projectdb']) as db_conn:
-            db_conn.row_factory = sqlite.Row
-            db_curs = db_conn.cursor()
-
-            db_curs.execute("SELECT * FROM projects WHERE projectid=?", (request["projectid"],))
-            project = db_curs.fetchone()
-            if project is None:
-                raise NotFoundError("Project not found")
-            project = dict(project)
-
-            db_curs.execute("SELECT * FROM T{} WHERE taskid=? AND projectid=?".format(project["year"]), (request["taskid"], request["projectid"]))
-            task = db_curs.fetchone()
-            if task is None:
-                raise NotFoundError("Task not found")
-            task = dict(task)
-
-            if request["field"] not in task:
-                raise NotFoundError("Task does not have field: {}".format(request["field"]))
-
-            db_curs.execute("UPDATE T{} SET {}=? WHERE taskid=? AND projectid=?".format(project["year"], request["field"]),
-                (request["value"], request["taskid"], request["projectid"]))
-            db_conn.commit()
-
-        return "Task updated"
-
-
-    def _fetch_task(self):
-        pass
-
-    def _fetch_project(self):
-        pass
-
-    def _task_check_error(self):
-        pass
-
-    def _task_check_job(self):
-        pass
 
 
 if __name__ == "__main__":
