@@ -144,27 +144,30 @@ class Projects(auth.UserAuth):
         """
         auth.token_auth(request["token"], self._config["authdb"])
 
-        #Check whether all necessary fields are defined for each task
-        fields = ("taskid", "projectid", "editor", "collator", "start", "end", "language")
+        #Check whether all necessary fields are in input for each task
+        infields = ("editor", "collator", "start", "end", "language")
+        fields = ("taskid", "projectid") + infields
         tasks = list(request["tasks"])
         for task in tasks:
-            if not all(k in task for k in fields):
-                log_raise("ProjID:{} Tasks do not contain all the required fields".format(required["projectid"]),
+            if not all(k in task for k in infields):
+                log_raise("ProjID:{} Tasks do not contain all the required fields".format(request["projectid"]),
                           BadRequestError)
 
         #Check received tasks are: contiguous, non-overlapping,
         #completely spanning audiofile (implicitly: audio uploaded)
         tasks.sort(key=lambda x:x["start"])
         prevtask_end = 0.0
-        for task in tasks:
+        for taskid, task in enumerate(tasks):
             if not approx_eq(prevtask_end, task["start"]):
                 log_raise("ProjID:{} Tasks times not contiguous and non-overlapping".format(request["projectid"]),
                           BadRequestError)
             prevtask_end = task["end"]
+            task["taskid"] = taskid
+            task["projectid"] = request["projectid"]
 
         with self.db as db:
             #This will lock the DB:
-            db.check_project(projectid, check_err=True) #later "try" to recover from certain issues
+            db.check_project(request["projectid"], check_err=True) #later "try" to recover from certain issues
             row = db.get_project(request["projectid"], fields=["audiodur"])
             #Check audio has been uploaded
             if row["audiodur"] is None:
@@ -172,6 +175,7 @@ class Projects(auth.UserAuth):
                           ConflictError)
             #Check tasks span audio
             if not approx_eq(row["audiodur"], prevtask_end):
+                LOG.debug("{} != {}".format(row["audiodur"], prevtask_end))
                 log_raise("ProjID:{} Tasks do not span entire audio file".format(request["projectid"]),
                           BadRequestError)
             #Check whether tasks already assigned
@@ -179,8 +183,8 @@ class Projects(auth.UserAuth):
                 log_raise("ProjID:{} Cannot be re-saved because tasks are already assigned (use: update_project())".format(request["projectid"]),
                           ConflictError)
             #Delete current list of tasks and re-insert from input
-            self.delete_tasks(projectid)
-            self.insert_tasks(projectid, tasks, fields)
+            db.delete_tasks(request["projectid"])
+            db.insert_tasks(request["projectid"], tasks, fields)
             #DEMIT: Also want to update other project meta-info
         ##########
         LOG.info("ProjID:{} Saved project".format(request["projectid"]))
@@ -551,7 +555,7 @@ class ProjectDB(sqlite.Connection):
         fieldsq = ", ".join(fieldnames)
         valuesq = ",".join(["?"] * len(fieldnames))
         for task in tasks:
-            self.execute("INSERT INTO {} {} VALUES({})".format(tasktable, fieldsq, valuesq),
+            self.execute("INSERT INTO {} ({}) VALUES({})".format(tasktable, fieldsq, valuesq),
                          tuple(task[fieldname] for fieldname in fieldnames))
 
     def lock_project(self, projectid, jobid=None):

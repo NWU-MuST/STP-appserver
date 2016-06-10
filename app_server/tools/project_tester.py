@@ -221,7 +221,7 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             tasks = [{"editor" : "neil", "collator" : "neil", "start" : 0.0, "end" : 20.0, "language" : "English"},
                     {"editor" : "daniel", "collator" : "daniel", "start" : 20.0, "end" : 40.0, "language" : "Afrikaans"},
-                    {"editor" : "gamer", "collator" : "gamer", "start" : 40.0, "end" : 60.0, "language" : "Zulu"}]
+                    {"editor" : "gamer", "collator" : "gamer", "start" : 40.0, "end" : 309.56, "language" : "Zulu"}]
             data = {"token": self.user_token, "projectid" : self.projectid, "tasks": tasks}
             res = requests.post(BASEURL + "projects/saveproject", headers=headers, data=json.dumps(data))
             print('saveproject(): SERVER SAYS:', res.text)
@@ -273,7 +273,7 @@ class Project:
             else:
                 print('SERVER SAYS:', res.text)
             print("\tSPEECHSERVER PUT: ", end="")
-            data = {"CTM": "0.0 5.0\n5.0 10.0\n10.0 15.0"}
+            data = {"CTM": "0.0 5.0\n5.0 10.0\n10.0 309.56"}
             res = requests.put(BASEURL + inurl, headers=headers, data=json.dumps(data))
             print(res.status_code)
             if res.status_code != 200:
