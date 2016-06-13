@@ -289,7 +289,7 @@ class Projects(auth.UserAuth):
             if not os.path.exists(ppath):
                 os.makedirs(ppath)
 
-            #Write audio file
+            #Write audio file (DEMIT: check audiofile name creation)
             audiofile = os.path.join(ppath, base64.urlsafe_b64encode(str(uuid.uuid4())))
             with open(audiofile, 'wb') as f:
                 f.write(request['file'])
@@ -329,90 +329,64 @@ class Projects(auth.UserAuth):
         return {"mime": "audio/ogg", "filename" : row["audiofile"]}
 
     def diarize_audio(self, request):
-        """ DEMIT: Check for audio...
-        """
         auth.token_auth(request["token"], self._config["authdb"])
-        db = sqlite.connect(self._config['projectdb'])
-        db.row_factory = sqlite.Row
         
-        #CHECK PROJECTS DB IS UNLOCKED AND SANE + CREATE IO ACCESS
-        with db:
-            db.execute("BEGIN IMMEDIATE") #lock the db early...
-            row = db.execute("SELECT audiofile, assigned, jobid, errstatus "
-                             "FROM projects "
-                             "WHERE projectid=?", (request["projectid"],)).fetchone()
-            if row is None: #project exists?
-                raise NotFoundError("Project not found")
-            row = dict(row)
-            if row["jobid"]: #project clean?
-                raise ConflictError("A job with id '{}' is already pending on this project".format(jobid))
-            elif row["errstatus"]:
-                raise ConflictError("A previous job resulted in error: '{}'".format(row["errstatus"]))
-            elif row["assigned"].upper() == "Y":
-                raise ConflictError("Tasks have already been assigned")
-            #Lock the project and setup I/O access
-            inurl = auth.gen_token()
-            outurl = auth.gen_token()
-            db.execute("UPDATE projects "
-                            "SET jobid=? "
-                            "WHERE projectid=?", ("diarize_audio",
-                                                  request["projectid"]))
-            db.execute("INSERT INTO incoming "
-                            "(projectid, url, servicetype) VALUES (?,?,?)", (request["projectid"],
-                                                                             inurl,
-                                                                             "diarize"))
-            db.execute("INSERT INTO outgoing "
-                            "(projectid, url, audiofile) VALUES (?,?,?)", (request["projectid"],
-                                                                           outurl,
-                                                                           row["audiofile"]))
-        #MAKE JOB REQUEST
+        with self.db as db:
+            #This will lock the DB:            
+            db.check_project(request["projectid"], check_err=True) #later "try" to recover from certain issues
+            #Check whether tasks already assigned
+            if db.project_assigned(request["projectid"]):
+                message = "ProjID:{} Tasks have already been assigned".format(request["projectid"])
+                LOG.debug(message); raise ConflictError(message)
+            #Get audiofile path and exists?
+            row = db.get_project(request["projectid"], ["audiofile"])
+            if not row["audiofile"]:
+                message = "ProjID:{} No audio has been uploaded".format(request["projectid"])
+                LOG.debug(message); raise ConflictError(message)            
+            #Set up I/O access and lock the project
+            db.insert_incoming(request["projectid"], url=auth.gen_token(), servicetype="diarize")
+            db.insert_outgoing(request["projectid"], url=auth.gen_token(), audiofile=row["audiofile"])
+            db.lock_project(request["projectid"], jobid="diarize_audio")
+            
+        #Make job request:
+        try:
 
-        # TEMPORARILY COMMENTED OUT FOR TESTING WITHOUT SPEECHSERVER:
-        # jobreq = {"token" : request["token"], "getaudio": os.path.join(APPSERVER, outurl),
-        #           "putresult": os.path.join(APPSERVER, inurl), "service" : "diarize", "subsystem" : "default"}
-        # LOG.debug(os.path.join(SPEECHSERVER, self._config["speechservices"]["diarize"]))
-        # reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]["diarize"]), data=json.dumps(jobreq))
-        # reqstatus = reqstatus.json()
-        reqstatus = {"jobid": auth.gen_token()} #DEMIT: dummy call for testing!
-        #TODO: handle return status
-        LOG.debug("{}".format(reqstatus))
-        #Handle request status
-        if "jobid" in reqstatus: #no error
-            with db:
-                db.execute("UPDATE projects "
-                           "SET jobid=? "
-                           "WHERE projectid=?", (reqstatus["jobid"],
-                                                 request["projectid"]))
+            # TEMPORARILY COMMENTED OUT FOR TESTING WITHOUT SPEECHSERVER:
+            # jobreq = {"token" : request["token"], "getaudio": os.path.join(APPSERVER, outurl),
+            #           "putresult": os.path.join(APPSERVER, inurl), "service" : "diarize", "subsystem" : "default"}
+            # LOG.debug(os.path.join(SPEECHSERVER, self._config["speechservices"]["diarize"]))
+            # reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]["diarize"]), data=json.dumps(jobreq))
+            # reqstatus = reqstatus.json()
+            reqstatus = {"jobid": auth.gen_token()} #DEMIT: dummy call for testing!
+            #TODO: handle return status
+            LOG.debug("{}".format(reqstatus))
+            #Check reqstatus from SpeechServ OK?
+            if not "jobid" in reqstatus:
+                message = "ProjID:{} Diarize fail, SpeechServ says: {}".format(request["projectid"], reqstatus["message"])
+                LOG.debug(message); raise Exception(message)
+            #Update project with jobid from SpeechServ
+            with self.db as db:
+                db.update_project(request["projectid"], {"jobid": reqstatus["jobid"]})
             LOG.info("ProjID:{} JobID:{} Diarize audio request sent.".format(request["projectid"], reqstatus["jobid"]))
             return "Request successful!"
-        #Something went wrong: undo project setup
-        with db:
-            db.execute("UPDATE projects "
-                       "SET jobid=? "
-                       "WHERE projectid=?", (None,
-                                             request["projectid"]))
-            db.execute("DELETE FROM incoming "
-                       "WHERE projectid=?", (request["projectid"],))
-            db.execute("DELETE FROM outgoing "
-                       "WHERE projectid=?", (request["projectid"],))
-        LOG.info("ProjID:{} Diarize audio request failed".format(request["projectid"]))
-        return reqstatus #DEMIT TODO: translate error from speech server!
+        except:
+            with self.db as db:
+                db.delete_incoming(request["projectid"])
+                db.delete_outgoing(request["projectid"])
+                db.unlock_project(request["projectid"], errstatus="diarize_audio")
+            raise
 
     def outgoing(self, uri):
         LOG.debug("Outgoing audio on temp URL:{}".format(uri))
-        db = sqlite.connect(self._config['projectdb'])
-        db.row_factory = sqlite.Row
-        with db:
-            row = db.execute("SELECT projectid, audiofile "
-                             "FROM outgoing WHERE url=?", (uri,)).fetchone()
-            if row is None: #url exists?
+        with self.db as db:
+            row = db.get_outgoing(uri)
+            if not row:
                 raise MethodNotAllowedError(uri)
-            row = dict(row)
-            db.execute("DELETE FROM outgoing WHERE url=?", (uri,))
         LOG.info("ProjID:{} Returning audio".format(row["projectid"]))
         return {"mime": "audio/ogg", "filename": row["audiofile"]}
 
 
+    #DEMIT
     def incoming(self, uri, data):
         LOG.debug("Incoming data on temp URL:{} data: {}".format(uri, data))
         db = sqlite.connect(self._config['projectdb'])
@@ -468,11 +442,6 @@ class Projects(auth.UserAuth):
 
 class ProjectDB(sqlite.Connection):
     """DEMIT: Review lock/err checking structure/parameters
-
-       DEMIT: Have to be careful with the implementation in here: We
-       actually don't want any non-SQLite exceptions to happen here
-       since that may invalidate assumptions about rollback in higher
-       level code. The exception is `check_project`
     """
 
     def lock(self):
@@ -624,6 +593,39 @@ class ProjectDB(sqlite.Connection):
                   "textfile VARCHAR(64), creation REAL, modified REAL, commitid VARCHAR(40), "
                   "ownership INTEGER, jobid VARCHAR(36), errstatus VARCHAR(128) )" )
         self.execute(query)
+
+    def insert_incoming(self, projectid, url, servicetype):
+        self.execute("INSERT INTO incoming "
+                     "(projectid, url, servicetype) "
+                     "VALUES (?,?,?)", (projectid, url, servicetype))
+
+    def insert_outgoing(self, projectid, url, audiofile):
+        self.execute("INSERT INTO outgoing "
+                     "(projectid, url, audiofile) "
+                     "VALUES (?,?,?)", (projectid, url, audiofile))
+
+    def delete_incoming(self, projectid):
+        self.execute("DELETE FROM incoming "
+                     "WHERE projectid=?", (projectid,))
+
+    def delete_outgoing(self, projectid):
+        self.execute("DELETE FROM outgoing "
+                     "WHERE projectid=?", (projectid,))
+        
+    def get_outgoing(self, url):
+        row = self.execute("SELECT projectid, audiofile "
+                           "FROM outgoing WHERE url=?", (url,)).fetchone()
+        if row is not None:
+            self.execute("DELETE FROM outgoing WHERE url=?", (url,))
+            row = dict(row)
+        else:
+            row = {}
+        return row
+        
+
+        
+        
+
 
 
 ## Helper funcs
