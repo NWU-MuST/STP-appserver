@@ -46,8 +46,8 @@
 	},
 	
     	"GET" : {
-    	    "/projects/projectaudio" : { "method" : "service.projects.Projects.project_audio",
-					 "parameters" : ["token", "projectid"] }
+    	    "/projects/getaudio" : { "method" : "service.projects.Projects.get_audio",
+				     "parameters" : ["token", "projectid"] }
 	},
 
     	"PUT" : {}

@@ -26,7 +26,7 @@ CREATEPROJECT - create a new project
 LISTPROJECTS - list projects
 LOADPROJECT - load projects
 UPLOADAUDIO - upload audio to project
-PROJECTAUDIO - retrieve project audio
+GETAUDIO - retrieve project audio
 SAVEPROJECT - save tasks to a project
 
 EXIT - quit
@@ -78,7 +78,7 @@ UPLOADAUDIO
 -----------
     Upload audio to a new project. `test.ogg` must be in the script directory. You must run `LOGIN` and `CREATEPROJECT` first
 
-PROJECTAUDIO
+GETAUDIO
 ------------
     Retrieve uploaded project audio. This will save the audio to `tmp.ogg`. Run `LOGIN`, `CREATEPROJECT`, `UPLOADAUDIO` first.
 

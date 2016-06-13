@@ -173,20 +173,20 @@ class Project:
             print("User not logged in!")
         print('')
 
-    def projectaudio(self):
+    def getaudio(self):
         """
             Return uploaded project audio
             Will save the uploaded audio to 'tmp.ogg' in current location
         """
         if self.user_token is not None and self.projectid is not None:
             params = {'token' : self.user_token, 'projectid' : self.projectid}
-            res = requests.get(BASEURL + "projects/projectaudio", params=params)
+            res = requests.get(BASEURL + "projects/getaudio", params=params)
             print(res.status_code)
             if res.status_code == 200:
                 with open('tmp.ogg', 'wb') as f:
                     f.write(res.content)
             else:
-                print('projectaudio(): SERVER SAYS:', res.text)
+                print('getaudio(): SERVER SAYS:', res.text)
         else:
             print("User not logged in!")
         print('')
@@ -222,7 +222,8 @@ class Project:
             tasks = [{"editor" : "neil", "collator" : "neil", "start" : 0.0, "end" : 20.0, "language" : "English"},
                     {"editor" : "daniel", "collator" : "daniel", "start" : 20.0, "end" : 40.0, "language" : "Afrikaans"},
                     {"editor" : "gamer", "collator" : "gamer", "start" : 40.0, "end" : 309.56, "language" : "Zulu"}]
-            data = {"token": self.user_token, "projectid" : self.projectid, "tasks": tasks}
+            project = {"projectname": "saved_project"}
+            data = {"token": self.user_token, "projectid" : self.projectid, "tasks": tasks, "project": project}
             res = requests.post(BASEURL + "projects/saveproject", headers=headers, data=json.dumps(data))
             print('saveproject(): SERVER SAYS:', res.text)
             print(res.status_code)
@@ -307,7 +308,7 @@ if __name__ == "__main__":
                     print("LISTPROJECTS - list projects")
                     print("LOADPROJECT - load projects")
                     print("UPLOADAUDIO - upload audio to project")
-                    print("PROJECTAUDIO - retrieve project audio")
+                    print("GETAUDIO - retrieve project audio")
                     print("SAVEPROJECT - save tasks to a project\n")
                     print("ASSIGNTASKS - assign tasks to editors\n")
                     print("DIARIZEAUDIO - save tasks to a project\n")
@@ -332,7 +333,13 @@ if __name__ == "__main__":
             proj.saveproject()
             proj.assigntasks()
             proj.logout()
-        if sys.argv[2].upper() == "DIARIZE_ASSIGN":
+        elif sys.argv[2].upper() == "ASSIGN_NOTASKS":
+            proj.login()
+            proj.createproject()
+            proj.uploadaudio()
+            proj.assigntasks()
+            proj.logout()
+        elif sys.argv[2].upper() == "DIARIZE_ASSIGN":
             proj.login()
             proj.createproject()
             proj.uploadaudio()
@@ -340,7 +347,7 @@ if __name__ == "__main__":
             proj.saveproject()
             proj.assigntasks()
             proj.logout()
-        if sys.argv[2].upper() == "DIARIZE_ASSIGN_DELETE":
+        elif sys.argv[2].upper() == "DIARIZE_ASSIGN_DELETE":
             proj.login()
             proj.createproject()
             proj.uploadaudio()
@@ -349,7 +356,7 @@ if __name__ == "__main__":
             proj.assigntasks()
             proj.deleteproject()
             proj.logout()
-        if sys.argv[2].upper() == "DIARIZE_DELETE":
+        elif sys.argv[2].upper() == "DIARIZE_DELETE":
             proj.login()
             proj.createproject()
             proj.uploadaudio()
@@ -357,8 +364,7 @@ if __name__ == "__main__":
             proj.saveproject()
             proj.deleteproject()
             proj.logout()
-
         else:
-            print("UNKNOWN TASK: {}".format(sys.argv[1]))
+            print("UNKNOWN TASK: {}".format(sys.argv[2]))
 
 
