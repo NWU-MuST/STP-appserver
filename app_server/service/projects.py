@@ -350,7 +350,6 @@ class Projects(auth.UserAuth):
             
         #Make job request:
         try:
-
             # TEMPORARILY COMMENTED OUT FOR TESTING WITHOUT SPEECHSERVER:
             # jobreq = {"token" : request["token"], "getaudio": os.path.join(APPSERVER, outurl),
             #           "putresult": os.path.join(APPSERVER, inurl), "service" : "diarize", "subsystem" : "default"}
@@ -385,64 +384,52 @@ class Projects(auth.UserAuth):
         LOG.info("ProjID:{} Returning audio".format(row["projectid"]))
         return {"mime": "audio/ogg", "filename": row["audiofile"]}
 
-
-    #DEMIT
     def incoming(self, uri, data):
         LOG.debug("Incoming data on temp URL:{} data: {}".format(uri, data))
-        db = sqlite.connect(self._config['projectdb'])
-        db.row_factory = sqlite.Row        
-        with db:
-            row = db.execute("SELECT projectid, servicetype "
-                             "FROM incoming "
-                             "WHERE url=?", (uri,)).fetchone()
-        if row is None: #url exists?
+        with self.db as db:
+            row = db.get_incoming(uri)
+        if not row: #url exists?
             raise MethodNotAllowedError(uri)
-        row = dict(row)
-        #SWITCH TO HANDLER FOR "SERVICETYPE"
-        assert row["servicetype"] in self._config["speechservices"], "servicetype '{}' not supported...".format(row["servicetype"])
+        #Switch to handler for "servicetype"
+        if not row["servicetype"] in self._config["speechservices"]:
+            raise Exception("servicetype '{}' not defined for AppServer".format(row["servicetype"]))
         handler = getattr(self, "_incoming_{}".format(row["servicetype"]))
         handler(data, row["projectid"]) #will throw exception if not successful
-        #CLEANUP DB
-        with db:
-            db.execute("DELETE FROM incoming WHERE url=?", (uri,))
         LOG.info("ProjID:{} Incoming data processed".format(row["projectid"]))
         return "Request successful!"
 
-
     def _incoming_diarize(self, data, projectid):
         LOG.debug("ProjID:{} Processing data: {}".format(projectid, data))
-        with sqlite.connect(self._config['projectdb']) as db_conn:
-            db_curs = db_conn.cursor()
-            db_curs.execute("SELECT year, jobid "
-                            "FROM projects "
-                            "WHERE projectid=?", (projectid,))
-            entry = db_curs.fetchone()
-            #Need to check whether project exists?
-            year, jobid = entry
-            tasktable = "T{}".format(year)
-            if "CTM" in data: #all went well
-                LOG.info("ProjID:{} JobID:{} Diarisation success".format(projectid, jobid))
-                #Parse CTM file
-                segments = [map(float, line.split()) for line in data["CTM"].splitlines()]
-                segments.sort(key=lambda x:x[0]) #by starttime
-                LOG.info("ProjID:{} JobID:{} CTM parsing successful...".format(projectid, jobid))
-                tasktable = "T{}".format(year)
-                db_curs.execute("DELETE FROM {} ".format(tasktable) +\
-                                "WHERE projectid=?", (projectid,)) #assume already OK'ed
+        try:
+            #Check whether SpeechServ job was successful
+            if not "CTM" in data:
+                message = "ProjID:{} Diarization process not successful (no CTM)".format(projectid)
+                LOG.debug(message); raise Exception(message)
+            #Proceed to update tasks
+            with self.db as db:
+                row = db.get_project(projectid, ["jobid"])
+                #Project still exists?
+                if not row:
+                    message = "ProjID:{} No longer exists".format(projectid)
+                    LOG.debug(message); raise ConflictError(message)
+                #Parse CTM file and create tasks
+                segments = diarize_parse_ctm(data["CTM"])
+                LOG.info("ProjID:{} JobID:{} CTM parsing successful...".format(projectid, row["jobid"]))
+                tasks = []
                 for taskid, (starttime, endtime) in enumerate(segments):
-                    db_curs.execute("INSERT INTO {} (taskid, projectid, start, end) VALUES(?,?,?,?)".format(tasktable),
-                                    (taskid, projectid, starttime, endtime))
-                db_curs.execute("UPDATE projects SET jobid=?, errstatus=? WHERE projectid=?", (None, None, projectid))
-            else: #"unlock" and recover error status
-                LOG.info("ProjID:{} JobID:{} Diarisation failure".format(projectid, jobid))
-                db_curs.execute("UPDATE projects SET jobid=?, errstatus=? WHERE projectid=?", (None, data["errstatus"], projectid))
-            db_conn.commit()
-        LOG.info("ProjID:{} Diarization result received successfully".format(projectid))
+                    tasks.append({"taskid": taskid, "projectid": projectid, "start": starttime, "end": endtime})
+                #Delete current list of tasks and re-insert from diarize result
+                db.delete_tasks(projectid)
+                db.insert_tasks(projectid, tasks, fields=["taskid", "projectid", "start", "end"])
+                db.unlock_project(projectid)
+            LOG.info("ProjID:{} Diarization result received successfully".format(projectid))
+        except Exception as e: #"unlock" and recover error status
+            LOG.debug("ProjID:{} Failure: {}".format(projectid, e))
+            with self.db as db:
+                db.unlock_project(projectid, errstatus=data["errstatus"])
 
 
 class ProjectDB(sqlite.Connection):
-    """DEMIT: Review lock/err checking structure/parameters
-    """
 
     def lock(self):
         self.execute("BEGIN IMMEDIATE")
@@ -481,7 +468,7 @@ class ProjectDB(sqlite.Connection):
             raise NotFoundError(message)
         row = dict(row)
         if row["jobid"]: #project clean?
-            message = "ProjID:{} This project is currently locked with jobid: {}".format(projectid, jobid)
+            message = "ProjID:{} This project is currently locked with jobid: {}".format(projectid, row["jobid"])
             LOG.debug(message)
             raise ConflictError(message)
         if check_err and row["errstatus"]:
@@ -621,16 +608,27 @@ class ProjectDB(sqlite.Connection):
         else:
             row = {}
         return row
-        
 
+    def get_incoming(self, url):
+        row = self.execute("SELECT projectid, servicetype "
+                           "FROM incoming WHERE url=?", (url,)).fetchone()
+        if row is not None:
+            self.execute("DELETE FROM incoming WHERE url=?", (url,))
+            row = dict(row)
+        else:
+            row = {}
+        return row
         
-        
-
-
 
 ## Helper funcs
 def approx_eq(a, b, epsilon=0.01):
     return abs(a - b) < epsilon
+
+def diarize_parse_ctm(ctm):
+    segments = [map(float, line.split()) for line in ctm.splitlines()]
+    segments.sort(key=lambda x:x[0]) #by starttime
+    return segments
+
 
 
 if __name__ == "__main__":
