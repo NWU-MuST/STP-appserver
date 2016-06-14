@@ -14,13 +14,26 @@ from dispatcher import Dispatch
 from service.httperrs import *
 
 #SETUP LOGGING
+
+#The following ensures that we can override "funcName" when logging
+# from wrapper functions, from:
+# http://stackoverflow.com/questions/7003898/using-functools-wraps-with-a-logging-decorator
+class CustomFormatter(logging.Formatter):
+    """Custom formatter, overrides funcName with value of funcname if it
+       exists
+    """
+    def format(self, record):
+        if hasattr(record, 'funcname'):
+            record.funcName = record.funcname
+        return super(CustomFormatter, self).format(record)
+
 LOGNAME = "APP"
 LOGFNAME = os.path.join(os.getenv("PERSISTENT_FS"), "appserver.log")
 LOGLEVEL = logging.DEBUG
 try:
     fmt = "%(asctime)s [%(levelname)s] %(name)s in %(funcName)s(): %(message)s"
     LOG = logging.getLogger(LOGNAME)
-    formatter = logging.Formatter(fmt)
+    formatter = CustomFormatter(fmt)
     ofstream = logging.handlers.TimedRotatingFileHandler(LOGFNAME, when="D", interval=1, encoding="utf-8")
     ofstream.setFormatter(formatter)
     LOG.addHandler(ofstream)

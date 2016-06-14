@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals, division, print_function #Py2
 
-
 #standard library
 import uuid
 import json
@@ -13,6 +12,8 @@ import os
 import shutil
 import subprocess
 import logging
+from functools import wraps
+from types import FunctionType
 try:
     from sqlite3 import dbapi2 as sqlite
 except ImportError:
@@ -28,12 +29,54 @@ import repo
 from httperrs import *
 
 LOG = logging.getLogger("APP.PROJECTS")
-DEBUG = 10 
-INFO = 20
 
 SPEECHSERVER = os.getenv("SPEECHSERVER"); assert SPEECHSERVER is not None
 APPSERVER = os.getenv("APPSERVER"); assert APPSERVER is not None
 SOXI_BIN = "/usr/bin/soxi"; assert os.stat(SOXI_BIN)
+
+def authlog(okaymsg):
+    """This performs authentication (inserting `username` into function
+       namespace) and logs the ENTRY, FAILURE or OK return of the
+       decorated method...
+       http://stackoverflow.com/questions/26746441/how-can-a-decorator-pass-variables-into-a-function-without-changing-its-signatur
+    """
+    def decorator(f):
+        logfuncname = {"funcname": f.__name__}
+        @wraps(f)
+        def wrapper(*args, **kw):
+            self, request = args[:2]
+            if not "file" in request:
+                LOG.debug("ENTER: request={}".format(request), extra=logfuncname)
+            else:
+                LOG.debug("ENTER: without 'file' --> request={}".format(
+                    dict([(k, request[k]) for k in request if k != "file"])), extra=logfuncname)
+            try:
+                #AUTH
+                username = auth.token_auth(request["token"], self._config["authdb"])
+                fn_globals = {}
+                fn_globals.update(globals())
+                fn_globals.update({"username": username})
+                call_fn = FunctionType(getattr(f, "func_code"), fn_globals) #Only Py2
+                #LOG-CALL-LOG-RETURN
+                if "projectid" in request:
+                    LOG.info("ENTER: (username={} projectid={})".format(username, request["projectid"]), extra=logfuncname)
+                else:
+                    LOG.info("ENTER: (username={})".format(username), extra=logfuncname)
+                result = call_fn(*args, **kw)
+                if "projectid" in request:
+                    LOG.info("OK: (username={} projectid={}) {}".format(username, request["projectid"], okaymsg), extra=logfuncname)
+                else:
+                    LOG.info("OK: (username={}) {}".format(username, okaymsg), extra=logfuncname)
+                return result
+            except Exception as e:
+                if "projectid" in request:
+                    LOG.info("FAIL: (username={} projectid={}) {}".format(username, request["projectid"], e), extra=logfuncname)
+                else:
+                    LOG.info("FAIL: (username={}) {}".format(username, e), extra=logfuncname)
+                raise
+        return wrapper
+    return decorator
+
 
 class Admin(admin.Admin):
     pass
@@ -48,22 +91,20 @@ class Projects(auth.UserAuth):
         self.db = sqlite.connect(self._config['projectdb'], factory=ProjectDB)
         self.db.row_factory = sqlite.Row
 
+    @authlog("Returning list of categories")
     def list_categories(self, request):
         """List Admin-created project categories
         """
-        username = auth.token_auth(request["token"], self._config["authdb"])
-        LOG.info("Returning list of project categories")
         return {'categories' : self._categories}
 
+    @authlog("Created new project")
     def create_project(self, request):
         """Create a new project for a user
         """
-        username = auth.token_auth(request["token"], self._config["authdb"])
-
         # Fetch project categories and check user supplied category
         if request["category"] not in self._categories:
-            raise BadRequestError('Project category: %s - NOT FOUND' % request["category"])
-
+            raise BadRequestError("Project category '{}' NOT FOUND".format(request["category"]))
+        # Create project
         with self.db as db:
             db.lock()
             # Fetch all projects
@@ -85,26 +126,21 @@ class Projects(auth.UserAuth):
                                "creation": time.time(),
                                "assigned": "N"})
             db.create_tasktable(year)
-        ##########
-        LOG.info("ProjID:{} Created new project".format(projectid))
+        LOG.info("Inserted new project: projectid={}".format(projectid))
         return {'projectid' : projectid}
 
+    @authlog("Returning list of projects")
     def list_projects(self, request):
         """List current projects owned by user
         """
-        username = auth.token_auth(request["token"], self._config["authdb"])
-
         with self.db as db:
             projects = db.get_projects(where={"username": username})
-        ##########
-        LOG.info("User:{} Returning list of projects".format(username))
         return {'projects' : projects}
 
+    @authlog("Deleted project")
     def delete_project(self, request):
         """Delete project and remove tasks, including all associated files.
         """
-        auth.token_auth(request["token"], self._config["authdb"])
-
         #Clear project from DB
         with self.db as db:
             row = db.get_project(request["projectid"], ["audiofile"])
@@ -113,26 +149,22 @@ class Projects(auth.UserAuth):
         if row:
             projectpath = os.path.dirname(row["audiofile"])
         shutil.rmtree(projectpath, ignore_errors=True)
-        ##########
-        LOG.info("ProjID:{} Deleted project".format(request["projectid"]))
         return "Project deleted!"
 
+    @authlog("Returning loaded project")
     def load_project(self, request):
         """Load project tasks
         """
-        auth.token_auth(request["token"], self._config["authdb"])
-
         with self.db as db:
             #This will lock the DB:
-            db.check_project(projectid, check_err=True) #later "try" to recover from certain issues
+            db.check_project(projectid, check_err=False) #DEMIT: check_err?
             project = db.get_project(request["projectid"],
                                      fields=["projectname", "category", "year"])
             tasks = db.get_tasks(request["projectid"],
                                  fields=["editor", "collator", "start", "end", "language"])
-        ##########
-        LOG.info("ProjID: {} Returning loaded project".format(request["projectid"]))
         return {'project' : project, 'tasks' : tasks}
 
+    @authlog("Saved project")
     def save_project(self, request):
         """Save the project state (assignments and task partitioning) in the
            interim. This can only be run BEFORE `assign_tasks` and
@@ -140,16 +172,13 @@ class Projects(auth.UserAuth):
            UI or both). To update assignees or toggle permissions
            after assignment use `update_project`
         """
-        auth.token_auth(request["token"], self._config["authdb"])
-
         #Check whether all necessary fields are in input for each task
         infields = ("editor", "collator", "start", "end", "language")
         fields = ("taskid", "projectid") + infields
         tasks = list(request["tasks"])
         for task in tasks:
             if not all(k in task for k in infields):
-                message = "ProjID:{} Tasks do not contain all the required fields".format(request["projectid"])
-                LOG.debug(message); raise BadRequestError(message)
+                raise BadRequestError("Tasks do not contain all the required fields")
 
         #Extract relevant project fields from input
         infields = ("projectname", "category")
@@ -161,36 +190,31 @@ class Projects(auth.UserAuth):
         prevtask_end = 0.0
         for taskid, task in enumerate(tasks):
             if not approx_eq(prevtask_end, task["start"]):
-                message = "ProjID:{} Tasks times not contiguous and non-overlapping".format(request["projectid"])
-                LOG.debug(message); raise BadRequestError(message)
+                raise BadRequestError("Tasks times not contiguous and non-overlapping")
             prevtask_end = task["end"]
             task["taskid"] = taskid
             task["projectid"] = request["projectid"]
 
         with self.db as db:
             #This will lock the DB:
-            db.check_project(request["projectid"], check_err=True) #later "try" to recover from certain issues
+            db.check_project(request["projectid"], check_err=False) #DEMIT: check_err? 
             row = db.get_project(request["projectid"], fields=["audiodur"])
             #Check audio has been uploaded
             if row["audiodur"] is None:
-                message = "ProjID:{} No audio has been uploaded".format(request["projectid"])
-                LOG.debug(message); raise ConflictError(message)
+                raise ConflictError("No audio has been uploaded")
             #Check tasks span audio
             if not approx_eq(row["audiodur"], prevtask_end):
-                message = "ProjID:{} Tasks do not span entire audio file".format(request["projectid"])
-                LOG.debug(message); raise BadRequestError(message)
+                raise BadRequestError("Tasks do not span entire audio file")
             #Check whether tasks already assigned
             if db.project_assigned(request["projectid"]):
-                message = "ProjID:{} Cannot be re-saved because tasks are already assigned (use: update_project())".format(request["projectid"])
-                LOG.debug(message); raise ConflictError(message)
+                raise ConflictError("Cannot be re-saved because tasks are already assigned (use: update_project())")
             #Delete current list of tasks and re-insert from input
             db.delete_tasks(request["projectid"])
             db.insert_tasks(request["projectid"], tasks, fields)
             db.update_project(request["projectid"], projectdata)
-        ##########
-        LOG.info("ProjID:{} Saved project".format(request["projectid"]))
         return 'Project saved!'
 
+    @authlog("Assigned tasks")
     def assign_tasks(self, request):
         """Assign tasks to editors:
             - Create documents associated with speech segments
@@ -198,20 +222,16 @@ class Projects(auth.UserAuth):
             - Sets permissions appropriately
             - Sets project state to `assigned` disallowing revision of task segments
         """
-        auth.token_auth(request["token"], self._config["authdb"])
-
         with self.db as db:
             #This will lock the DB:
-            db.check_project(request["projectid"], check_err=True) #later "try" to recover from certain issues
+            db.check_project(request["projectid"], check_err=False) #DEMIT: check_err?
             if db.project_assigned(request["projectid"]):
-                message = "ProjID:{} Tasks have already been assigned".format(request["projectid"])
-                LOG.debug(message); raise ConflictError(message)
+                raise ConflictError("Tasks have already been assigned")
             #Fetch tasks and project info
             row = db.get_project(request["projectid"], fields=["audiofile"])
             tasks = db.get_tasks(request["projectid"])
             if not tasks:
-                message = "ProjID:{} No tasks found to assign".format(request["projectid"])
-                LOG.debug(message); raise ConflictError(message)
+                raise ConflictError("No tasks found to assign")
             #Lock the project
             db.lock_project(request["projectid"], jobid="assign_tasks")
         try:
@@ -229,22 +249,22 @@ class Projects(auth.UserAuth):
                 task["modified"] = task["creation"]
                 task["ownership"] = 0 #Actually need an ownership ENUM: {0: "editor", 1: "collator"}
             #Make sure all required fields are set
+            #DEMIT: Needs to happen before I start creating files (see `save_project`)!
             undefined = (None, "")
             for task in tasks:
                 if not all(v not in undefined for k, v in task.iteritems() if k in updatefields):
-                    message = "ProjID:{} Not all necessary task fields are defined for".format(request["projectid"])
-                    LOG.debug(message); raise BadRequestError(message)
+                    raise BadRequestError("Not all necessary task fields are defined")
             #Update fields and unlock project
             with self.db as db:
                 db.update_tasks(request["projectid"], tasks, fields=updatefields)
                 db.update_project(request["projectid"], data={"assigned": "Y"})
                 db.unlock_project(request["projectid"])
-            LOG.info("ProjID:{} Assigned tasks".format(request["projectid"]))
             return 'Project tasks assigned!'
         except:
             #Unlock the project and set errstatus
             with self.db as db:
                 db.unlock_project(request["projectid"], errstatus="assign_tasks")
+            #DEMIT: Cleanup code in-case we fail while/after creating files
             raise
 
 
@@ -259,20 +279,17 @@ class Projects(auth.UserAuth):
     def unlock_project(self, request):
         raise NotImplementedError
 
-
+    @authlog("Audio uploaded")
     def upload_audio(self, request):
         """Audio uploaded to project space
            TODO: convert audio to OGG Vorbis, mp3splt for editor
         """
-        username = auth.token_auth(request["token"], self._config["authdb"])
-
         with self.db as db:
             #This will lock the DB:
-            db.check_project(request["projectid"], check_err=True) #later "try" to recover from certain issues
+            db.check_project(request["projectid"], check_err=False) #DEMIT: check_err?
             #Check whether tasks already assigned
             if db.project_assigned(request["projectid"]):
-                message = "ProjID:{} Cannot re-upload audio because tasks are already assigned".format(request["projectid"])
-                LOG.debug(message); raise ConflictError(message)
+                raise ConflictError("Cannot re-upload audio because tasks are already assigned")
             #Get current project details
             row = db.get_project(request["projectid"], ["audiofile", "creation"])
             #Lock project
@@ -303,7 +320,6 @@ class Projects(auth.UserAuth):
             #Remove previous audiofile if it exists
             if row["audiofile"]:
                 os.remove(row["audiofile"])
-            LOG.info("ProjID:{} Audio uploaded".format(request["projectid"]))
             return 'Audio Saved!'
         except:
             #Unlock the project and set errstatus
@@ -311,43 +327,34 @@ class Projects(auth.UserAuth):
                 db.unlock_project(request["projectid"], errstatus="upload_audio")
             raise
 
-
+    @authlog("Returning audio for project")
     def get_audio(self, request):
         """Make audio available for project user
         """
-        auth.token_auth(request["token"], self._config["authdb"])
-
         with self.db as db:
             row = db.get_project(request["projectid"], fields=["audiofile"])
             if not row:
-                message = "ProjID:{} Project not found".format(request["projectid"])
-                LOG.debug(message); raise NotFoundError(message)                
+                raise NotFoundError("Project not found")
             if not row["audiofile"]:
-                message = "ProjID:{} No audio has been uploaded".format(request["projectid"])
-                LOG.debug(message); raise ConflictError(message)
-        LOG.info("ProjID:{} Returning audio for project".format(request["projectid"]))
+                raise ConflictError("No audio has been uploaded")
         return {"mime": "audio/ogg", "filename" : row["audiofile"]}
 
+    @authlog("Diarize audio request sent")
     def diarize_audio(self, request):
-        auth.token_auth(request["token"], self._config["authdb"])
-        
         with self.db as db:
             #This will lock the DB:            
-            db.check_project(request["projectid"], check_err=True) #later "try" to recover from certain issues
+            db.check_project(request["projectid"], check_err=False) #DEMIT: check_err?
             #Check whether tasks already assigned
             if db.project_assigned(request["projectid"]):
-                message = "ProjID:{} Tasks have already been assigned".format(request["projectid"])
-                LOG.debug(message); raise ConflictError(message)
+                raise ConflictError("Tasks have already been assigned")
             #Get audiofile path and exists?
             row = db.get_project(request["projectid"], ["audiofile"])
             if not row["audiofile"]:
-                message = "ProjID:{} No audio has been uploaded".format(request["projectid"])
-                LOG.debug(message); raise ConflictError(message)            
+                raise ConflictError("No audio has been uploaded")
             #Set up I/O access and lock the project
             db.insert_incoming(request["projectid"], url=auth.gen_token(), servicetype="diarize")
             db.insert_outgoing(request["projectid"], url=auth.gen_token(), audiofile=row["audiofile"])
             db.lock_project(request["projectid"], jobid="diarize_audio")
-            
         #Make job request:
         try:
             # TEMPORARILY COMMENTED OUT FOR TESTING WITHOUT SPEECHSERVER:
@@ -357,17 +364,15 @@ class Projects(auth.UserAuth):
             # reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]["diarize"]), data=json.dumps(jobreq))
             # reqstatus = reqstatus.json()
             reqstatus = {"jobid": auth.gen_token()} #DEMIT: dummy call for testing!
-            #TODO: handle return status
-            LOG.debug("{}".format(reqstatus))
+            LOG.debug("Diarize: reqstatus={}".format(reqstatus))
             #Check reqstatus from SpeechServ OK?
             if not "jobid" in reqstatus:
-                message = "ProjID:{} Diarize fail, SpeechServ says: {}".format(request["projectid"], reqstatus["message"])
-                LOG.debug(message); raise Exception(message)
+                raise Exception("Diarize request failed, SpeechServ says: {}".format(reqstatus["message"]))
             #Update project with jobid from SpeechServ
+            LOG.info("(username={} projectid={} jobid={}) Diarize request successful".format(username, request["projectid"], reqstatus["jobid"]))
             with self.db as db:
                 db.update_project(request["projectid"], {"jobid": reqstatus["jobid"]})
-            LOG.info("ProjID:{} JobID:{} Diarize audio request sent.".format(request["projectid"], reqstatus["jobid"]))
-            return "Request successful!"
+            return "Diarize request successful!"
         except:
             with self.db as db:
                 db.delete_incoming(request["projectid"])
@@ -376,45 +381,50 @@ class Projects(auth.UserAuth):
             raise
 
     def outgoing(self, uri):
-        LOG.debug("Outgoing audio on temp URL:{}".format(uri))
-        with self.db as db:
-            row = db.get_outgoing(uri)
-            if not row:
-                raise MethodNotAllowedError(uri)
-        LOG.info("ProjID:{} Returning audio".format(row["projectid"]))
-        return {"mime": "audio/ogg", "filename": row["audiofile"]}
+        try:
+            LOG.info("ENTER: url={}".format(uri))
+            with self.db as db:
+                row = db.get_outgoing(uri)
+                if not row:
+                    raise MethodNotAllowedError(uri)
+            LOG.info("OK: (url={} projectid={}) Returning audio".format(uri, row["projectid"]))
+            return {"mime": "audio/ogg", "filename": row["audiofile"]}
+        except Exception as e:
+            LOG.info("FAIL: {}".format(e))
 
     def incoming(self, uri, data):
-        LOG.debug("Incoming data on temp URL:{} data: {}".format(uri, data))
-        with self.db as db:
-            row = db.get_incoming(uri)
-        if not row: #url exists?
-            raise MethodNotAllowedError(uri)
-        #Switch to handler for "servicetype"
-        if not row["servicetype"] in self._config["speechservices"]:
-            raise Exception("servicetype '{}' not defined for AppServer".format(row["servicetype"]))
-        handler = getattr(self, "_incoming_{}".format(row["servicetype"]))
-        handler(data, row["projectid"]) #will throw exception if not successful
-        LOG.info("ProjID:{} Incoming data processed".format(row["projectid"]))
-        return "Request successful!"
+        LOG.debug("ENTER: url={} data={}".format(uri, data))
+        try:
+            LOG.info("ENTER: url={}".format(uri))
+            with self.db as db:
+                row = db.get_incoming(uri)
+            if not row: #url exists?
+                raise MethodNotAllowedError(uri)
+            #Switch to handler for "servicetype"
+            if not row["servicetype"] in self._config["speechservices"]:
+                raise Exception("Service type '{}' not defined in AppServer".format(row["servicetype"]))
+            handler = getattr(self, "_incoming_{}".format(row["servicetype"]))
+            handler(data, row["projectid"]) #will throw exception if not successful
+            LOG.info("OK: (url={} projectid={}) Incoming data processed".format(uri, row["projectid"]))
+            return "Request successful!"
+        except Exception as e:
+            LOG.info("FAIL: {}".format(e))
 
     def _incoming_diarize(self, data, projectid):
-        LOG.debug("ProjID:{} Processing data: {}".format(projectid, data))
+        LOG.debug("ENTER: projectid={} data={}".format(projectid, data))
         try:
             #Check whether SpeechServ job was successful
             if not "CTM" in data:
-                message = "ProjID:{} Diarization process not successful (no CTM)".format(projectid)
-                LOG.debug(message); raise Exception(message)
+                raise Exception("(projectid={}) Diarization process not successful (no CTM)".format(projectid))
             #Proceed to update tasks
             with self.db as db:
                 row = db.get_project(projectid, ["jobid"])
                 #Project still exists?
                 if not row:
-                    message = "ProjID:{} No longer exists".format(projectid)
-                    LOG.debug(message); raise ConflictError(message)
+                    raise ConflictError("(projectid={}) Project no longer exists".format(projectid))
                 #Parse CTM file and create tasks
                 segments = diarize_parse_ctm(data["CTM"])
-                LOG.info("ProjID:{} JobID:{} CTM parsing successful...".format(projectid, row["jobid"]))
+                LOG.debug("(projectid={} jobid={}) CTM parsing successful...".format(projectid, row["jobid"]))
                 tasks = []
                 for taskid, (starttime, endtime) in enumerate(segments):
                     tasks.append({"taskid": taskid, "projectid": projectid, "start": starttime, "end": endtime})
@@ -422,15 +432,14 @@ class Projects(auth.UserAuth):
                 db.delete_tasks(projectid)
                 db.insert_tasks(projectid, tasks, fields=["taskid", "projectid", "start", "end"])
                 db.unlock_project(projectid)
-            LOG.info("ProjID:{} Diarization result received successfully".format(projectid))
+            LOG.info("OK: (projectid={}) Diarization result received successfully".format(projectid))
         except Exception as e: #"unlock" and recover error status
-            LOG.debug("ProjID:{} Failure: {}".format(projectid, e))
             with self.db as db:
                 db.unlock_project(projectid, errstatus=data["errstatus"])
+            LOG.info("FAIL: {}".format(e))
 
 
 class ProjectDB(sqlite.Connection):
-
     def lock(self):
         self.execute("BEGIN IMMEDIATE")
 
@@ -463,18 +472,12 @@ class ProjectDB(sqlite.Connection):
         self.lock()
         row = self.execute("SELECT jobid, errstatus FROM projects WHERE projectid=?", (projectid,)).fetchone()
         if row is None: #project exists?
-            message = "ProjID:{} Project not found".format(projectid)
-            LOG.debug(message)
-            raise NotFoundError(message)
+            raise NotFoundError("Project not found")
         row = dict(row)
         if row["jobid"]: #project clean?
-            message = "ProjID:{} This project is currently locked with jobid: {}".format(projectid, row["jobid"])
-            LOG.debug(message)
-            raise ConflictError(message)
+            raise ConflictError("This project is currently locked with jobid: {}".format(row["jobid"]))
         if check_err and row["errstatus"]:
-            message = "ProjID:{} A previous job resulted in error: '{}'".format(projectid, errstatus)
-            LOG.debug(message)
-            raise ConflictError(message)
+            raise PrevJobError("{}".format(row["errstatus"]))
 
     def get_project(self, projectid, fields):
         """Should typically run `check_project` before doing this.
@@ -501,12 +504,10 @@ class ProjectDB(sqlite.Connection):
         tasks = self.execute("SELECT {} FROM {} ".format(selectq, tasktable) +\
                            "WHERE projectid=?", (projectid,)).fetchall()
         if tasks is None:
-            message = "ProjID:{} No tasks found".format(projectid)
+            message = "projectid={} No tasks found".format(projectid)
             LOG.debug(message)
             raise NotFoundError(message)
         return map(dict, tasks)
-
-
 
 ##################################################
 ############################## WRITE OPERATIONS
@@ -572,6 +573,12 @@ class ProjectDB(sqlite.Connection):
                                            errstatus,
                                            projectid))
 
+    def clearerror_project(self, projectid):
+        self.execute("UPDATE projects "
+                     "SET errstatus=? "
+                     "WHERE projectid=?", (None,
+                                           projectid))
+
     def create_tasktable(self, year):
         table_name = "T{}".format(year)
         query = ( "CREATE TABLE IF NOT EXISTS {} ".format(table_name) +\
@@ -620,7 +627,7 @@ class ProjectDB(sqlite.Connection):
         return row
         
 
-## Helper funcs
+########## Helper funcs/classes
 def approx_eq(a, b, epsilon=0.01):
     return abs(a - b) < epsilon
 
@@ -629,8 +636,9 @@ def diarize_parse_ctm(ctm):
     segments.sort(key=lambda x:x[0]) #by starttime
     return segments
 
+class PrevJobError(Exception):
+    pass
 
 
 if __name__ == "__main__":
     pass
-
