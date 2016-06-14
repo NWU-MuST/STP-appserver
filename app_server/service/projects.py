@@ -232,28 +232,30 @@ class Projects(auth.UserAuth):
             tasks = db.get_tasks(request["projectid"])
             if not tasks:
                 raise ConflictError("No tasks found to assign")
+            #Make sure all required fields are set
+            undefined = (None, "")
+            infields = ("taskid", "projectid", "editor", "collator", "start", "end", "language")
+            for task in tasks:
+                if not all(v not in undefined for k, v in task.iteritems() if k in infields):
+                    raise BadRequestError("Not all necessary task fields are defined (use save_project() first)")
             #Lock the project
             db.lock_project(request["projectid"], jobid="assign_tasks")
         try:
             #Create files and update fields
             textname = "text"
-            updatefields = ("editor", "collator", "textfile", "creation", "modified", "commitid", "ownership")
+            updatefields = ("textfile", "creation", "modified", "commitid", "ownership")
             audiodir = os.path.dirname(row["audiofile"])
+            textdirs = []
             for task in tasks:
                 textdir = os.path.join(audiodir, str(task["taskid"]).zfill(3))
                 os.makedirs(textdir) #should succeed...
+                textdirs.append(textdir)
                 repo.init(textdir)
                 task["textfile"] = os.path.join(textdir, textname)
                 open(task["textfile"], "wb").close()
                 task["commitid"], task["creation"] = repo.commit(textdir, textname, "task assigned")
                 task["modified"] = task["creation"]
                 task["ownership"] = 0 #Actually need an ownership ENUM: {0: "editor", 1: "collator"}
-            #Make sure all required fields are set
-            #DEMIT: Needs to happen before I start creating files (see `save_project`)!
-            undefined = (None, "")
-            for task in tasks:
-                if not all(v not in undefined for k, v in task.iteritems() if k in updatefields):
-                    raise BadRequestError("Not all necessary task fields are defined")
             #Update fields and unlock project
             with self.db as db:
                 db.update_tasks(request["projectid"], tasks, fields=updatefields)
@@ -261,10 +263,12 @@ class Projects(auth.UserAuth):
                 db.unlock_project(request["projectid"])
             return 'Project tasks assigned!'
         except:
+            #Cleanup filesystem
+            for textdir in textdirs:
+                shutil.rmtree(textdir, ignore_errors=True)
             #Unlock the project and set errstatus
             with self.db as db:
                 db.unlock_project(request["projectid"], errstatus="assign_tasks")
-            #DEMIT: Cleanup code in-case we fail while/after creating files
             raise
 
 
