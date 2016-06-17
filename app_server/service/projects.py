@@ -51,7 +51,7 @@ def authlog(okaymsg):
                 LOG.debug("ENTER: without 'file' --> request={}".format(
                     dict([(k, request[k]) for k in request if k != "file"])), extra=logfuncname)
             try:
-                #AUTH
+                #AUTH + INSERT USERNAME INTO FUNC SCOPE
                 username = auth.token_auth(request["token"], self._config["authdb"])
                 fn_globals = {}
                 fn_globals.update(globals())
@@ -161,7 +161,7 @@ class Projects(auth.UserAuth):
             project = db.get_project(request["projectid"],
                                      fields=["projectname", "category", "year"])
             tasks = db.get_tasks(request["projectid"],
-                                 fields=["editor", "collator", "start", "end", "language"])
+                                 fields=["editor", "collator", "start", "end", "language"]) #DEMIT: taskid, ownership?
         return {'project' : project, 'tasks' : tasks}
 
     @authlog("Saved project")
@@ -169,8 +169,9 @@ class Projects(auth.UserAuth):
         """Save the project state (assignments and task partitioning) in the
            interim. This can only be run BEFORE `assign_tasks` and
            usually after partitioning (e.g. via speech diarize or the
-           UI or both). To update assignees or toggle permissions
-           after assignment use `update_project`
+           UI or both). To update project meta-info, assignees or
+           toggle ownership after assignment use `update_project` or
+           `set_ownership`
         """
         #Check whether all necessary fields are in input for each task
         infields = ("editor", "collator", "start", "end", "language")
@@ -272,14 +273,42 @@ class Projects(auth.UserAuth):
             raise
 
 
+    @authlog("Project updated")
     def update_project(self, request):
-        """Update assignees and/or permissions on tasks and/or other project
-           meta information. Can only be run after task assignment.
-
-           DEMIT: Task ID valid?
+        """Update assignees and/or other project meta-info. Can only be run
+           after task assignment.
         """
-        raise NotImplementedError
+        taskupdatefields = {"editor", "collator", "language", "ownership"}
+        projectupdatefields = {"projectname", "category"}
+        projectdata = dict((k, request["project"][k]) for k in projectupdatefields if k in request["project"])
+        #Check taskid in all tasks and taskids unique
+        try:
+            in_taskids = [task["taskid"] for task in request["tasks"]]
+        except KeyError:
+            raise BadRequestError("Task ID not found in input")
+        if len(in_taskids) != len(set(in_taskids)):
+            raise BadRequestError("Task IDs not unique in input")
+        in_taskids = set(in_taskids)
 
+        with self.db as db:
+            #This will lock the DB:
+            db.check_project(request["projectid"], check_err=False) #DEMIT: check_err?
+            #Check whether tasks assigned
+            if not db.project_assigned(request["projectid"]):
+                raise ConflictError("Save and assign tasks before calling update...")
+            #Check whether all taskids valid
+            curr_taskids = set(task["taskid"] for task in db.get_tasks(request["projectid"], fields=["taskid"]))
+            if not curr_taskids.issuperset(in_taskids):
+                raise BadRequestError("Invalid task ID in input")
+            #Update fields
+            for task in request["tasks"]:
+                taskfields = taskupdatefields.intersection(task)
+                db.update_tasks(request["projectid"], [task], fields=taskfields)
+            if projectdata:
+                db.update_project(request["projectid"], data=projectdata)
+        return "Project updated!"
+
+    @authlog("Project unlocked")
     def unlock_project(self, request):
         raise NotImplementedError
 
@@ -543,6 +572,7 @@ class ProjectDB(sqlite.Connection):
                          "WHERE projectid=?", tuple([data[k] for k in fields] + [projectid]))
 
     def update_tasks(self, projectid, tasks, fields):
+        fields = tuple(fields)
         year = self.get_project(projectid, fields=["year"])["year"]
         tasktable = "T{}".format(year)
         #Commit to DB (currently fail silently if nonexistent)

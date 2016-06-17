@@ -214,7 +214,7 @@ class Project:
     def saveproject(self):
         """
             Save tasks for a specific project
-            tasks should be a list with these elements:
+            tasks should be a list of dicts with these elements:
             tasks = [(editor<string:20>, collater<string:20>, start<float>, end<float>), (), ...]
         """
         if self.user_token is not None and self.projectid is not None:
@@ -245,6 +245,25 @@ class Project:
             print("User not logged in!")
         print('')
 
+    def updateproject(self):
+        """
+            Update tasks and project info (after assignment) for a specific project
+            tasks should be a list of dicts with these elements:
+            tasks = [{taskid:, editor:, collater:, language:, ownership}, {}, ...]
+            project is a dict with these elements:
+            project = {projectname:, category:}
+        """
+        if self.user_token is not None and self.projectid is not None:
+            headers = {"Content-Type" : "application/json"}
+            tasks = [{"taskid": 2, "editor" : "daniel", "collator" : "daniel", "start" : 40.0, "end" : 309.56, "language" : "Guangdong hua"}]
+            project = {"projectname": "updated_project"}
+            data = {"token": self.user_token, "projectid" : self.projectid, "tasks": tasks, "project": project}
+            res = requests.post(BASEURL + "projects/updateproject", headers=headers, data=json.dumps(data))
+            print('saveproject(): SERVER SAYS:', res.text)
+            print(res.status_code)
+        else:
+            print("User not logged in!")
+        print('')
 
     def diarizeaudio(self):
         """
@@ -346,6 +365,15 @@ if __name__ == "__main__":
             proj.diarizeaudio()
             proj.saveproject()
             proj.assigntasks()
+            proj.logout()
+        elif sys.argv[2].upper() == "DIARIZE_ASSIGN_UPDATE":
+            proj.login()
+            proj.createproject()
+            proj.uploadaudio()
+            proj.diarizeaudio()
+            proj.saveproject()
+            proj.assigntasks()
+            proj.updateproject()
             proj.logout()
         elif sys.argv[2].upper() == "DIARIZE_ASSIGN_DELETE":
             proj.login()
