@@ -38,13 +38,15 @@
 	    "/projects/saveproject" : { "method" : "service.projects.Projects.save_project",
 					"parameters" : ["token", "projectid", "tasks", "project"] },
 	    "/projects/deleteproject" : { "method" : "service.projects.Projects.delete_project",
-					"parameters" : ["token", "projectid"] },
+					  "parameters" : ["token", "projectid"] },
 	    "/projects/assigntasks" : { "method" : "service.projects.Projects.assign_tasks",
 					"parameters" : ["token", "projectid"] },
 	    "/projects/updateproject" : { "method" : "service.projects.Projects.update_project",
-					"parameters" : ["token", "projectid", "tasks", "project"] },
+					  "parameters" : ["token", "projectid", "tasks", "project"] },
 	    "/projects/diarizeaudio" : { "method" : "service.projects.Projects.diarize_audio",
-					 "parameters" : ["token", "projectid"] }
+					 "parameters" : ["token", "projectid"] },
+	    "/projects/unlockproject" : { "method" : "service.projects.Projects.unlock_project",
+					  "parameters" : ["token", "projectid"] }
 	},
 	
     	"GET" : {

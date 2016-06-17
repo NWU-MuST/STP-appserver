@@ -259,15 +259,30 @@ class Project:
             project = {"projectname": "updated_project"}
             data = {"token": self.user_token, "projectid" : self.projectid, "tasks": tasks, "project": project}
             res = requests.post(BASEURL + "projects/updateproject", headers=headers, data=json.dumps(data))
-            print('saveproject(): SERVER SAYS:', res.text)
+            print('updateproject(): SERVER SAYS:', res.text)
             print(res.status_code)
         else:
             print("User not logged in!")
         print('')
 
+    def unlockproject(self):
+        """
+            Unlock the project in event of error or when cancelling a speech job
+        """
+        if self.user_token is not None and self.projectid is not None:
+            headers = {"Content-Type" : "application/json"}
+            data = {"token": self.user_token, "projectid" : self.projectid}
+            res = requests.post(BASEURL + "projects/unlockproject", headers=headers, data=json.dumps(data))
+            print('unlockproject(): SERVER SAYS:', res.text)
+            print(res.status_code)
+        else:
+            print("User not logged in!")
+        print('')
+
+
     def diarizeaudio(self):
         """
-            Make diarize request to split project into tasks
+            Make diarize request to split project into tasks (and simulate speech server)
         """
         if self.user_token is not None and self.projectid is not None:
             headers = {"Content-Type" : "application/json"}
@@ -302,6 +317,20 @@ class Project:
             print("User not logged in!")
         print('')
 
+    def diarizeaudio2(self):
+        """
+            Make diarize request to split project into tasks (don't simulate speech server)
+        """
+        if self.user_token is not None and self.projectid is not None:
+            headers = {"Content-Type" : "application/json"}
+            data = {"token": self.user_token, "projectid" : self.projectid}
+            res = requests.post(BASEURL + "projects/diarizeaudio", headers=headers, data=json.dumps(data))
+            print('diarizeaudio2(): SERVER SAYS:', res.text)
+            print(res.status_code)
+        else:
+            print("User not logged in!")
+        print('')
+
 
 if __name__ == "__main__":
     print('Accessing Docker app server via: http://127.0.0.1:9999/wsgi/')
@@ -328,9 +357,11 @@ if __name__ == "__main__":
                     print("LOADPROJECT - load projects")
                     print("UPLOADAUDIO - upload audio to project")
                     print("GETAUDIO - retrieve project audio")
-                    print("SAVEPROJECT - save tasks to a project\n")
-                    print("ASSIGNTASKS - assign tasks to editors\n")
-                    print("DIARIZEAUDIO - save tasks to a project\n")
+                    print("SAVEPROJECT - save tasks to a project")
+                    print("ASSIGNTASKS - assign tasks to editors")
+                    print("DIARIZEAUDIO - save tasks to a project via diarize request (simulate speech server)\n")
+                    print("DIARIZEAUDIO2 - like DIARIZEAUDIO but withouth speech server (project stays locked)\n")
+                    print("UNLOCKPROJECT - unlock project (can test this against DIARIZEAUDIO2)")
                     print("EXIT - quit")
 
                 else:

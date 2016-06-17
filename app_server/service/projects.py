@@ -34,6 +34,8 @@ SPEECHSERVER = os.getenv("SPEECHSERVER"); assert SPEECHSERVER is not None
 APPSERVER = os.getenv("APPSERVER"); assert APPSERVER is not None
 SOXI_BIN = "/usr/bin/soxi"; assert os.stat(SOXI_BIN)
 
+TASKID_DIR_ZFILL = 3
+
 def authlog(okaymsg):
     """This performs authentication (inserting `username` into function
        namespace) and logs the ENTRY, FAILURE or OK return of the
@@ -157,7 +159,7 @@ class Projects(auth.UserAuth):
         """
         with self.db as db:
             #This will lock the DB:
-            db.check_project(projectid, check_err=False) #DEMIT: check_err?
+            db.check_project(request["projectid"], check_err=False) #DEMIT: check_err?
             project = db.get_project(request["projectid"],
                                      fields=["projectname", "category", "year"])
             tasks = db.get_tasks(request["projectid"],
@@ -248,7 +250,7 @@ class Projects(auth.UserAuth):
             audiodir = os.path.dirname(row["audiofile"])
             textdirs = []
             for task in tasks:
-                textdir = os.path.join(audiodir, str(task["taskid"]).zfill(3))
+                textdir = os.path.join(audiodir, str(task["taskid"]).zfill(TASKID_DIR_ZFILL))
                 os.makedirs(textdir) #should succeed...
                 textdirs.append(textdir)
                 repo.init(textdir)
@@ -264,6 +266,7 @@ class Projects(auth.UserAuth):
                 db.unlock_project(request["projectid"])
             return 'Project tasks assigned!'
         except:
+            LOG.debug("(projectid={}) FAIL: Cleaning up filesystem and unlocking".format(request["projectid"]))
             #Cleanup filesystem
             for textdir in textdirs:
                 shutil.rmtree(textdir, ignore_errors=True)
@@ -310,7 +313,49 @@ class Projects(auth.UserAuth):
 
     @authlog("Project unlocked")
     def unlock_project(self, request):
-        raise NotImplementedError
+        """Unlock project and send cancel request for speech job if relevant
+        """
+        with self.db as db:
+            db.lock()
+            #Project exists and locked?
+            row = db.get_project(request["projectid"], ["jobid"])
+            if row is None:
+                raise ConflictError("Project does not exist")
+            jobid = row["jobid"]
+            if not jobid:
+                raise ConflictError("Project is not locked")
+            #Why locked?
+            if jobid == "assign_tasks":
+                LOG.info("(projectid={}) Previous failure in assign_tasks(): Cleaning up filesystem".format(request["projectid"]))
+                audiofile = db.get_project(request["projectid"], fields=["audiofile"])["audiofile"]
+                tasks = db.get_tasks(request["projectid"], fields=["taskid"])
+                for task in tasks:
+                    textdir = os.path.join(os.path.dirname(audiofile), str(task["taskid"]).zfill(TASKID_DIR_ZFILL))
+                    shutil.rmtree(textdir, ignore_errors=True)
+                db.unlock_project(request["projectid"], errstatus="assign_tasks")
+                return "Project unlocked: Task assignment failed"
+            elif jobid == "upload_audio": #DEMIT: Revisit audiofile name generation?
+                LOG.info("(projectid={}) Previous failure in upload_audio(): Nothing to be done (filesystem may contain spurious audio file)".format(request["projectid"]))
+                db.unlock_project(request["projectid"], errstatus="upload_audio")
+                return "Project unlocked: Audio upload failed"
+            elif jobid == "diarize_audio":
+                LOG.info("(projectid={}) Previous failure in diarize_audio(): Cleaning up DB".format(request["projectid"]))
+                db.delete_incoming(request["projectid"])
+                db.delete_outgoing(request["projectid"])
+                db.unlock_project(request["projectid"], errstatus="diarize_audio")
+                return "Project unlocked: Diarize request failed"
+            else: #Speech job pending
+                LOG.info("(projectid={} jobid={}) Speech job pending. Cleaning up DB and cancelling...".format(request["projectid"], jobid))
+                db.delete_incoming(request["projectid"])
+                db.delete_outgoing(request["projectid"])
+                db.unlock_project(request["projectid"], errstatus="diarize_audio")
+        #Send cancel job request to SpeechServ:
+        # TEMPORARILY COMMENTED OUT FOR TESTING WITHOUT SPEECHSERVER:
+        # cancelreq = {}
+        # reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]["diarize"]), data=json.dumps(jobreq))
+        # reqstatus = reqstatus.json()
+        reqstatus = ["OK"] or ["NOT OK"] #DEMIT: dummy call for testing!
+        return "Project unlocked: Diarize job cancelled"
 
     @authlog("Audio uploaded")
     def upload_audio(self, request):
@@ -355,6 +400,7 @@ class Projects(auth.UserAuth):
                 os.remove(row["audiofile"])
             return 'Audio Saved!'
         except:
+            LOG.debug("(projectid={}) FAIL: Unlocking".format(request["projectid"]))
             #Unlock the project and set errstatus
             with self.db as db:
                 db.unlock_project(request["projectid"], errstatus="upload_audio")
@@ -407,6 +453,7 @@ class Projects(auth.UserAuth):
                 db.update_project(request["projectid"], {"jobid": reqstatus["jobid"]})
             return "Diarize request successful!"
         except:
+            LOG.debug("(projectid={}) FAIL: Cleaning up DB and unlocking".format(request["projectid"]))
             with self.db as db:
                 db.delete_incoming(request["projectid"])
                 db.delete_outgoing(request["projectid"])
@@ -452,9 +499,11 @@ class Projects(auth.UserAuth):
             #Proceed to update tasks
             with self.db as db:
                 row = db.get_project(projectid, ["jobid"])
-                #Project still exists?
+                #Project still exists and expecting job?
                 if not row:
                     raise ConflictError("(projectid={}) Project no longer exists".format(projectid))
+                elif row["jobid"] is None:
+                    raise ConflictError("(projectid={}) Project no longer expecting job (project unlocked in the meantime)".format(projectid))
                 #Parse CTM file and create tasks
                 segments = diarize_parse_ctm(data["CTM"])
                 LOG.debug("(projectid={} jobid={}) CTM parsing successful...".format(projectid, row["jobid"]))
