@@ -26,6 +26,49 @@ LOG = logging.getLogger("APP.EDITOR")
 SPEECHSERVER = os.getenv("SPEECHSERVER"); assert SPEECHSERVER is not None
 APPSERVER = os.getenv("APPSERVER"); assert APPSERVER is not None
 
+def authlog(okaymsg):
+    """This performs authentication (inserting `username` into function
+       namespace) and logs the ENTRY, FAILURE or OK return of the
+       decorated method...
+       http://stackoverflow.com/questions/26746441/how-can-a-decorator-pass-variables-into-a-function-without-changing-its-signatur
+    """
+    def decorator(f):
+        logfuncname = {"funcname": f.__name__}
+        @wraps(f)
+        def wrapper(*args, **kw):
+            self, request = args[:2]
+            if not "file" in request:
+                LOG.debug("ENTER: request={}".format(request), extra=logfuncname)
+            else:
+                LOG.debug("ENTER: without 'file' --> request={}".format(
+                    dict([(k, request[k]) for k in request if k != "file"])), extra=logfuncname)
+            try:
+                #AUTH + INSERT USERNAME INTO FUNC SCOPE
+                username = auth.token_auth(request["token"], self._config["authdb"])
+                fn_globals = {}
+                fn_globals.update(globals())
+                fn_globals.update({"username": username})
+                call_fn = FunctionType(getattr(f, "func_code"), fn_globals) #Only Py2
+                #LOG-CALL-LOG-RETURN
+                if "projectid" in request:
+                    LOG.info("ENTER: (username={} projectid={})".format(username, request["projectid"]), extra=logfuncname)
+                else:
+                    LOG.info("ENTER: (username={})".format(username), extra=logfuncname)
+                result = call_fn(*args, **kw)
+                if "projectid" in request:
+                    LOG.info("OK: (username={} projectid={}) {}".format(username, request["projectid"], okaymsg), extra=logfuncname)
+                else:
+                    LOG.info("OK: (username={}) {}".format(username, okaymsg), extra=logfuncname)
+                return result
+            except Exception as e:
+                if "projectid" in request:
+                    LOG.info("FAIL: (username={} projectid={}) {}".format(username, request["projectid"], e), extra=logfuncname)
+                else:
+                    LOG.info("FAIL: (username={}) {}".format(username, e), extra=logfuncname)
+                raise
+        return wrapper
+    return decorator
+
 class Admin(admin.Admin):
     pass
 
@@ -36,37 +79,21 @@ class Editor(auth.UserAuth):
             self._config = json.loads(infh.read())
         self._speech = speechserv
 
+        #DB connection setup:
+        self.db = sqlite.connect(self._config['projectdb'], factory=EditorDB)
+        self.db.row_factory = sqlite.Row
+
+    @authlog("Return user's tasks")
     def load_tasks(self, request):
         """
             Load tasks assigned to editor
             Task state is: CANOPEN, READONLY, SPEECHLOCKED, ERROR
         """
-        this_user = auth.token_auth(request["token"], self._config["authdb"])
-
-        with sqlite.connect(self._config["projectdb"]) as db_conn:
-            db_conn.row_factory = sqlite.Row
-            db_curs = db_conn.cursor()
-
-            # Fetch all the projects which have been assigned
-            db_curs.execute("SELECT projectid FROM projects WHERE assigned='Y'")
-            projects = map(dict, db_curs.fetchall())
-            if projects is None:
-                return "No projects have been created"
-
-            # Fetch all the years 
-            db_curs.execute("SELECT DISTINCT year FROM projects")
-            years = map(dict, db_curs.fetchall())
-
-            # Fetch all tasks
-            raw_tasks = []
-            for year in years:
-                db_curs.execute("SELECT * FROM T{} WHERE editor=?".format(year["year"]), (this_user,))
-
-                _tmp = map(dict, db_curs.fetchall())
-                for x in _tmp: x.update({"year" : year["year"]})
-                raw_tasks.extend(_tmp)
-
-            if len(raw_tasks) == 0:
+        with self.db as db:
+            raw_tasks = db.tasks(username)
+            if type(raw_tasks) in [str, unicode]:
+                return raw_tasks
+            elif type(raw_tasks) is list and len(raw_tasks) == 0:
                 return "No tasks assigned to editor"
 
             # Sort tasks
@@ -87,145 +114,199 @@ class Editor(auth.UserAuth):
 
             return tasks
 
+    def _test_read(self, filename):
+        """
+            Check if a file can be opened
+        """
+        try:
+            open(filename, 'rb').close()
+        except:
+            raise BadRequestError("Cannot open file")
+
+    @authlog("Return audio")
     def get_audio(self, request):
         """
             Return the audio for this specific task
         """
-        #TODO: check if audiofile, start and end is valid
-        # check if you can access this project
+        try:
+            with self.db as db:
+                db.check_project_task(request["projectid"], request["taskid"])
 
-        auth.token_auth(request["token"], self._config["authdb"])
-        with sqlite.connect(self._config["projectdb"]) as db_conn:
-            db_conn.row_factory = sqlite.Row
-            db_curs = db_conn.cursor()
+            with self.db as db:
+                project = db.get_project(request["projectid"], fields=["year", "audiofile"])
+                year = project["year"]
+                audiofile = project["audiofile"]
 
-            db_curs.execute("SELECT * FROM projects WHERE projectid=?", (request["projectid"],))
-            project = db_curs.fetchone()
-            if project is None:
-                raise NotFoundError("Project not found")
-            project = dict(project)
+                if audiofile is None or len(audiofile) == 0:
+                    raise NotFoundError("No audio file has been uploaded to the project")
 
-            db_curs.execute("SELECT start, end FROM T{} WHERE taskid=? AND projectid=?".format(project["year"]), (request["taskid"], request["projectid"]))
-            _tmp = dict(db_curs.fetchone())
-            audiorange = [float(_tmp["start"]), float(_tmp["end"])]
+                if not os.path.exists(audiofile):
+                    raise NotFoundError("Cannot find audio file uploaded to project")
 
-        return {"filename" : project["audiofile"], "range" : audiorange, "mime" : "audio/ogg"}
+                self._test_read(audiofile)
 
+                items = db.get_task(request["projectid"], request["taskid"], year, fields=["start", "end"])
+                if not items:
+                    raise BadRequestError("Audio segment has not been defined for this task")
+
+                audiorange = [float(items["start"]), float(items["end"])]
+
+            return {"filename" : audiofile, "range" : audiorange, "mime" : "audio/ogg"}
+        except Exception as e:
+            LOG.error("Get audio failed: {}".format(e))
+            raise
+
+    @authlog("Return text")
     def get_text(self, request):
         """
             Return the text data for this specific task
         """
-        #TODO: check if user can access this task - not speech or error lock
+        try:
+            with self.db as db:
+                db.check_project_task(request["projectid"], request["taskid"])
 
-        auth.token_auth(request["token"], self._config["authdb"])
-        with sqlite.connect(self._config["projectdb"]) as db_conn:
-            db_conn.row_factory = sqlite.Row
-            db_curs = db_conn.cursor()
+            with self.db as db:
+                year = db.get_project(request["projectid"], fields=["year"])["year"]
+                textfile = db.get_task(request["projectid"], request["taskid"], year, fields=["textfile"])["textfile"]
 
-            db_curs.execute("SELECT * FROM projects WHERE projectid=?", (request["projectid"],))
-            project = db_curs.fetchone()
-            if project is None:
-                raise NotFoundError("Project not found")
-            project = dict(project)
+                if textfile is None or len(textfile) == 0:
+                    raise NotFoundError("This task has no text file")
 
-            db_curs.execute("SELECT textfile FROM T{} WHERE taskid=? AND projectid=?".format(project["year"]), (request["taskid"],request["projectid"]))
-            task = dict(db_curs.fetchone())
-            if task is None:
-                raise NotFoundError("Task not found")
-            task = dict(task)
+                if not os.path.exists(textfile):
+                    raise NotFoundError("Cannot find text file")
 
-        with codecs.open(task["textfile"], "r", "utf-8") as f: text = f.read()
+                self._test_read(textfile)
 
-        return {"text" : text}
+                with codecs.open(textfile, "r", "utf-8") as f: text = f.read()
 
+            return {"text" : text}
+        except Exception as e:
+            LOG.error("Get text failed: {}".format(e))
+            raise
+
+    @authlog("Save text")
     def save_text(self, request):
         """
             Save the provided text to task
         """
-        #TODO: check if you can save to this task -- check lock
+        try:
+            #TODO: check if you can save to this task -- check lock
+            with self.db as db:
+                db.check_project_task(request["projectid"], request["taskid"])
 
-        auth.token_auth(request["token"], self._config["authdb"])
-        with sqlite.connect(self._config["projectdb"]) as db_conn:
-            db_conn.row_factory = sqlite.Row
-            db_curs = db_conn.cursor()
+            with self.db as db:
+                year = db.get_project(request["projectid"], fields=["year"])["year"]
+                textfile = db.get_task(request["projectid"], request["taskid"], year, fields=["textfile"])["textfile"]
+                db.set_jobid(request["projectid"], request["taskid"], year, 'save_text')
 
-            db_curs.execute("SELECT * FROM projects WHERE projectid=?", (request["projectid"],))
-            project = db_curs.fetchone()
-            if project is None:
-                raise NotFoundError("Project not found")
-            project = dict(project)
+                if textfile is None or len(textfile) == 0:
+                    raise NotFoundError("This task has no text file")
 
-            db_curs.execute("SELECT * FROM T{} WHERE taskid=? AND projectid=?".format(project["year"]), (request["taskid"],request["projectid"]))
-            task = db_curs.fetchone()
-            if task is None:
-                raise NotFoundError("Task not found")
-            task = dict(task)
-            textdir = os.path.dirname(task["textfile"])
-            #TODO: check errors, not sure how we recover from here
-            repo.check(textdir)
-            with codecs.open(task["textfile"], "w", "utf-8") as f:
-                f.write(request["text"])
-            task["commitid"], task["modified"] = repo.commit(textdir, os.path.basename(task["textfile"]), "Changes saved")
-            db_curs.execute("UPDATE T{} SET commitid=?, modified=? WHERE taskid=? AND projectid=?".format(project["year"]),
-                (task["commitid"], task["modified"], request["taskid"], request["projectid"]))
-            db_conn.commit()
+                if not os.path.exists(textfile):
+                    raise NotFoundError("Cannot find text file for this task")
 
-        return "Text Saved!"
+                self._test_read(textfile)
 
-    def _get_project_task(self, request):
-        """
-            Return the project and tasks for this request
-        """
-        with sqlite.connect(self._config['projectdb']) as db_conn:
-            db_conn.row_factory = sqlite.Row
-            db_curs = db_conn.cursor()
-            db_curs.execute("BEGIN IMMEDIATE") #lock the db early...
+                textdir = os.path.dirname(textfile)
+                #TODO: check errors, not sure how we recover from here
+                repo.check(textdir)
+                with codecs.open(textfile, "w", "utf-8") as f:
+                    f.write(request["text"])
+                commitid, modified = repo.commit(textdir, os.path.basename(textfile), "Changes saved")
+                db.save_text(request["projectid"], request["taskid"], year, commitid, modified)
+                db.set_jobid(request["projectid"], request["taskid"], year, None)
 
-            db_curs.execute("SELECT * FROM projects WHERE projectid=?", (request["projectid"],))
-            project = db_curs.fetchone()
-            if project is None:
-                raise NotFoundError("Project not found")
-            project = dict(project)
+            return "Text Saved!"
+        except Exception as e:# TODO: exception within exception
+            LOG.error("Save text failed: {}".format(e))
+            with self.db as db:
+                db.lock()
+                year = db.get_project(request["projectid"], fields=["year"])["year"]
+                db.set_jobid(request["projectid"], request["taskid"], year, None)
+                db.set_errstatus(request["projectid"], request["taskid"], year, "{}".format(e))
+            raise
 
-            db_curs.execute("SELECT start, end, textfile, jobid "
-                            "FROM T{} "
-                            "WHERE taskid=? AND projectid=?".format(project["year"]), (request["taskid"],request["projectid"]))
-            task = db_curs.fetchone()
-            #Task exists?
-            if task is None:
-                db_conn.commit()
-                raise NotFoundError("Task not found")
-            task = dict(task)
-
-            #Task clean? #DEMIT: Also check whether already split into tasks?
-            if task["jobid"]:
-                db_conn.commit()
-                raise ConflictError("A job with id '{}' is already pending on this task".format(jobid))
-
-        return project, task
-
+    @authlog("Perform diarize")
     def diarize(self, request):
         """
             Diarize the audio segment
             This will be run on an empty text file only
         """
-        auth.token_auth(request["token"], self._config["authdb"])
-        project, task = self._get_project_task(request)
-        if os.path.getsize(task["textfile"]) != 0:
-            raise BadRequestError("Cannot run diarize since the document is not empty!")
-        request["service"] = "diarize"
-        return self._speech_job(request, project, task, "diarize", "default", {})
+        try:
+            with self.db as db:
+                db.check_project_task(request["projectid"], request["taskid"])
+                project = db.get_project(request["projectid"], fields=["audiofile", "year"])
+                task = db.get_task(request["projectid"], request["taskid"], project["year"], fields=["textfile","start","end"])
+                db.set_jobid(request["projectid"], request["taskid"], project["year"], "diarize_task")
 
+            if project["audiofile"] is None or len(project["audiofile"]) == 0:
+                raise NotFoundError("No audio file has been uploaded to the project")
+
+            if not os.path.exists(project["audiofile"]):
+                raise NotFoundError("Cannot find audio file uploaded to project")
+
+            self._test_read(project["audiofile"])
+
+            if os.path.getsize(task["textfile"]) != 0:
+                raise BadRequestError("Cannot run diarize since the document is not empty!")
+
+            if task["textfile"] is None or len(task["textfile"]) == 0:
+                raise NotFoundError("This task has no text file")
+
+            self._test_read(task["textfile"])
+
+            request["service"] = "diarize"
+            return self._speech_job(request, project, task, "diarize", "default", {})
+        except Exception as e:
+            LOG.error("Diarize audio failed: {}".format(e))
+            with self.db as db:
+                db.lock()
+                year = db.get_project(request["projectid"], fields=["year"])["year"]
+                db.set_jobid(request["projectid"], request["taskid"], year, None)
+                db.set_errstatus(request["projectid"], request["taskid"], year, "{}".format(e))
+            raise
+
+    @authlog("Perform recognize")
     def recognize(self, request):
         """
             Recognize spoken audio in portions that do not contain text
         """
-        auth.token_auth(request["token"], self._config["authdb"])
-        project, task = self._get_project_task(request)
-        params = self._recognize_segments(task["textfile"])
-        params["language"] = "English"
-        request["service"] = "recognize"
-        return self._speech_job(request, project, task, "recognize", "sgmm", params)
+        try:
+            with self.db as db:
+                db.check_project_task(request["projectid"], request["taskid"])
+                project = db.get_project(request["projectid"], fields=["audiofile", "year"])
+                task = db.get_task(request["projectid"], request["taskid"], project["year"], fields=["textfile","start","end"])
+                db.set_jobid(request["projectid"], request["taskid"], project["year"], "recognize_task")
+
+            if project["audiofile"] is None or len(project["audiofile"]) == 0:
+                raise NotFoundError("No audio file has been uploaded to the project")
+
+            if not os.path.exists(project["audiofile"]):
+                raise NotFoundError("Cannot find audio file uploaded to project")
+
+            self._test_read(project["audiofile"])
+
+            if task["textfile"] is None or len(task["textfile"]) == 0:
+                raise NotFoundError("This task has no text file")
+
+            if os.path.getsize(task["textfile"]) == 0:
+                raise BadRequestError("Cannot run recognize since the document is empty!")
+
+            self._test_read(task["textfile"])
+
+            params = self._recognize_segments(task["textfile"])
+            params["language"] = "English"
+            request["service"] = "recognize"
+
+            return self._speech_job(request, project, task, "recognize", "sgmm", params)
+        except Exception as e:
+            LOG.error("Recognize audio failed: {}".format(e))
+            with self.db as db:
+                db.lock()
+                year = db.get_project(request["projectid"], fields=["year"])["year"]
+                db.set_jobid(request["projectid"], request["taskid"], year, None)
+                db.set_errstatus(request["projectid"], request["taskid"], year, "{}".format(e))
+            raise
 
     def _recognize_segments(self, textfile):
         """
@@ -235,16 +316,46 @@ class Editor(auth.UserAuth):
         #TODO: should force ckeditor to use existing tools
         return {"segments" : [(10.0, 20.0, "SPK1"), (20.0, 30.0, "SPK2")]}
 
+    @authlog("Perform alignment")
     def align(self, request):
         """
             Align text to audio for portions that contain text
         """
-        auth.token_auth(request["token"], self._config["authdb"])
-        project, task = self._get_project_task(request)
-        params = self._align_segments(task["textfile"])
-        params["language"] = "English"
-        request["service"] = "align"
-        return self._speech_job(request, project, task, "align", "sgmm", params)
+        try:
+            with self.db as db:
+                db.check_project_task(request["projectid"], request["taskid"])
+                project = db.get_project(request["projectid"], fields=["audiofile", "year"])
+                task = db.get_task(request["projectid"], request["taskid"], project["year"], fields=["textfile","start","end"])
+                db.set_jobid(request["projectid"], request["taskid"], project["year"], "align_task")
+
+            if project["audiofile"] is None or len(project["audiofile"]) == 0:
+                raise NotFoundError("No audio file has been uploaded to the project")
+
+            if not os.path.exists(project["audiofile"]):
+                raise NotFoundError("Cannot find audio file uploaded to project")
+
+            self._test_read(project["audiofile"])
+
+            if task["textfile"] is None or len(task["textfile"]) == 0:
+                raise NotFoundError("This task has no text file")
+
+            if os.path.getsize(task["textfile"]) == 0:
+                raise BadRequestError("Cannot run alignment since the document is empty!")
+
+            self._test_read(task["textfile"])
+
+            params = self._align_segments(task["textfile"])
+            params["language"] = "English"
+            request["service"] = "align"
+            return self._speech_job(request, project, task, "align", "sgmm", params)
+        except Exception as e:
+            LOG.error("Align audio failed: {}".format(e))
+            with self.db as db:
+                db.lock()
+                year = db.get_project(request["projectid"], fields=["year"])["year"]
+                db.set_jobid(request["projectid"], request["taskid"], year, None)
+                db.set_errstatus(request["projectid"], request["taskid"], year, "{}".format(e))
+            raise
 
     def _align_segments(self, textfile):
         """
@@ -270,27 +381,16 @@ class Editor(auth.UserAuth):
         """
             Submit a speech job
         """
-        with sqlite.connect(self._config['projectdb']) as db_conn:
-            db_conn.row_factory = sqlite.Row
-            db_curs = db_conn.cursor()
-            db_curs.execute("BEGIN IMMEDIATE") #lock the db early...
-
+        with self.db as db:
+            db.lock()
             #Setup I/O access
             inurl = auth.gen_token()
             outurl = auth.gen_token()
 
-            db_curs.execute("UPDATE T{} "
-                            "SET jobid=? "
-                            "WHERE taskid=? AND projectid=?".format(project["year"]), ("pending",
-                                                  request["taskid"], request["projectid"]))
-            db_curs.execute("INSERT INTO incoming "
-                            "(projectid, taskid, url, servicetype) VALUES (?,?,?,?)", (request["projectid"], request["taskid"],
-                                                                          inurl,
-                                                                          request["service"]))
-            db_curs.execute("INSERT INTO outgoing "
-                            "(projectid, url, audiofile, start, end) VALUES (?,?,?,?,?)", (request["projectid"],
-                                                                           outurl, project["audiofile"], task["start"], task["end"]))
-            db_conn.commit()
+            db.set_jobid(request["projectid"], request["taskid"], project["year"], "pending")            
+            db.insert_incoming(request["projectid"], request["taskid"], inurl, request["service"])
+            db.insert_outgoing(request["projectid"], outurl, project["audiofile"], task["start"], task["end"])
+
         #Make job request
         #TEMPORARILY COMMENTED OUT FOR TESTING WITHOUT SPEECHSERVER:
         #TODO: fix editor reference
@@ -310,263 +410,136 @@ class Editor(auth.UserAuth):
         LOG.debug("{}".format(reqstatus))
         #Handle request status
         if "jobid" in reqstatus: #no error
-            with sqlite.connect(self._config['projectdb']) as db_conn:
-                db_curs = db_conn.cursor()
-                db_curs.execute("UPDATE T{} "
-                                "SET jobid=? "
-                                "WHERE taskid=? AND projectid=?".format(project["year"]), (reqstatus["jobid"],
-                                                      request["taskid"], request["projectid"]))
-                db_conn.commit()
+            with self.db as db:
+                db.lock()
+                db.set_jobid(request["projectid"], request["taskid"], project["year"], reqstatus["jobid"])
             LOG.info("Speech service request sent for project ID: {}, task ID: {}, job ID: {}".format(request["projectid"], request["taskid"], reqstatus["jobid"]))
             return "Request successful!"
+
         #Something went wrong: undo project setup
-        with sqlite.connect(self._config['projectdb']) as db_conn:
-            db_curs = db_conn.cursor()
-            db_curs.execute("UPDATE T{} "
-                            "SET jobid=? "
-                            "WHERE taskid=? AND projectid=?".format(project["year"]), (None,
-                                                  request["taskid"], request["projectid"]))
+        with self.db as db:
+            db.lock()
+            db.clear_jobid(request["projectid"], request["taskid"], project["year"])
             if "message" in reqstatus:
-                db_curs.execute("UPDATE T{} "
-                                "SET errstatus=? "
-                                "WHERE taskid=? AND projectid=?".format(project["year"]), (reqstatus["message"],
-                                                      request["taskid"], request["projectid"]))
-            db_curs.execute("DELETE FROM incoming "
-                            "WHERE url=?", (inurl,))
-            db_curs.execute("DELETE FROM outgoing "
-                            "WHERE url=?", (outurl,))
-            db_conn.commit()
+                db.set_errstatus(request["projectid"], request["taskid"], project["year"], reqstatus["message"])
+            db.delete_incoming_byurl(inurl)
+            db.delete_outgoing_byurl(outurl)
+
         LOG.error("Speech service request failed for project ID: {}, task ID: {}".format(request["projectid"], request["taskid"]))
         return reqstatus #DEMIT TODO: translate error from speech server!
 
     def outgoing(self, uri):
         """
         """
-        LOG.debug(uri)
-        with sqlite.connect(self._config['projectdb']) as db_conn:
-            db_conn.row_factory = sqlite.Row
-            db_curs = db_conn.cursor()
-            db_curs.execute("SELECT projectid, audiofile, start, end "
-                            "FROM outgoing WHERE url=?", (uri,))
-            entry = db_curs.fetchone()
-            LOG.debug(entry)
-            #URL exists?
-            if entry is None:
-                raise MethodNotAllowedError(uri)
-            entry = dict(entry)
+        try:
+            LOG.debug(uri)
+            with self.db:
+                row = db.get_outgoing(uri)
+                LOG.debug(row)
+                #URL exists?
+                if not row:
+                    raise MethodNotAllowedError(uri)
+                LOG.info("Returning audio for project ID: {}".format(entry["projectid"]))
 
-            db_curs.execute("DELETE FROM outgoing WHERE url=?", (uri,))
-            db_conn.commit()
-        LOG.info("Returning audio for project ID: {}".format(entry["projectid"]))
+                # Check if audio range is available
+                if row["start"] is not None and entry["end"] is not None:
+                    return {"mime": "audio/ogg", "filename": row["file"], "range" : (float(row["start"]), float(row["end"]))}
+                else:
+                    return {"mime": "audio/ogg", "filename": row["file"]}
+        except Exception as e:
+            LOG.error("Requested outgoing resource failed: {}".format(e))
 
-        # Check if audio range is available
-        if entry["start"] is not None and entry["end"] is not None:
-            return {"mime": "audio/ogg", "filename": entry["file"], "range" : (float(entry["start"]), float(entry["end"]))}
-        else:
-            return {"mime": "audio/ogg", "filename": entry["file"]}
 
     def incoming(self, uri, data):
         """
         """
-        LOG.debug("incoming_data: {}".format(data))
-        with sqlite.connect(self._config['projectdb']) as db_conn:
-            db_conn.row_factory = sqlite.Row
-            db_curs = db_conn.cursor()
-            db_curs.execute("SELECT projectid, taskid, servicetype "
-                            "FROM incoming "
-                            "WHERE url=?", (uri,))
-            entry = db_curs.fetchone()
-        #URL exists?
-        if entry is None:
-            raise MethodNotAllowedError(uri)
-        entry = dict(entry)
+        try:
+            LOG.debug("incoming_data: {}".format(data))
+            with self.db as db:
+                row = db.get_incoming(uri)
+                LOG.debug(row)
+                #URL exists?
+                if not row:
+                    raise MethodNotAllowedError(uri)
 
-        #Switch to handler for "servicetype"
-        #assert servicetype in self._config["speechservices"], "servicetype '{}' not supported...".format(servicetype)
-        #handler = getattr(self, "_incoming_{}".format(servicetype))
-        #handler(data, projectid, taskid) #will throw exception if not successful
-        #TODO: I don't think the servicetype uis needed
+                if not row["servicetype"] in self._config["speechservices"]:
+                    raise Exception("Service type '{}' not defined in AppServer".format(row["servicetype"]))
 
-        handler = getattr(self, "_incoming_{}".format(entry["servicetype"]))
-        handler(data, entry["projectid"], entry["taskid"])
+                handler = getattr(self, "_incoming_{}".format(row["servicetype"]))
+                handler(data, row["projectid"], row["taskid"])
 
-        #Cleanup DB
-        with sqlite.connect(self._config['projectdb']) as db_conn:
-            db_curs = db_conn.cursor()
-            db_curs.execute("DELETE FROM incoming "
-                            "WHERE url=?", (uri,))
-            db_conn.commit()
-        LOG.info("Incoming data processed for project ID: {}, task ID: {}".format(entry["projectid"], entry["taskid"]))
-        return "Request successful!"
+                LOG.info("Incoming data processed for project ID: {}, task ID: {}".format(row["projectid"], row["taskid"]))
+            return "Request successful!"
+        except Exception as e:
+            LOG.error("Request incoming resource failed: {}".format(e))
+
+
+    def _incoming_base(self, data, projectid, taskid):
+        """
+        """
+        try:
+            LOG.debug("Speech processing incoming diarize (Project ID: {}, Task ID: {})".format(projectid, taskid))
+            with self.db as db:
+                year = db.get_project(projectid, fields=["year"])["year"]
+                if not year:
+                    raise ConflictError("(projectid={}) Project no longer exists".format(projectid))
+
+            if len(data["errstatus"]) != 0:
+                raise Exception("Speech job failed: (Project ID: {}, Task ID: {})".format(projectid, taskid))
+            if "CTM" not in data:
+                raise Exception("No CTM found in data: (Project ID: {}, Task ID: {})".format(projectid, taskid))
+
+            with self.db as db:
+                jobid = db.get_task(projectid, taskid, year, fields=["jobid"])["jobid"]
+                if not jobid:
+                    raise ConflictError("No job expected (Project ID: {}, Task ID: {})".format(projectid, taskid))
+
+                textfile = db.get_task(projectid, taskid, year, fields=["textfile"])["textfile"]
+                if task["textfile"] is None or len(task["textfile"]) == 0:
+                    raise NotFoundError("This task has no text file")
+                self._test_read(task["textfile"])
+
+                ctm = self._ctm_editor(data["CTM"], textfile)
+                repo.check(os.path.dirname(textfile))
+                with codecs.open(textfile, "w", "utf-8") as f:
+                    f.write(ctm)
+                commitid, modified = repo.commit(os.path.dirname(textfile), os.path.basename(textfile), "Changes saved")
+                db.save_text(request["projectid"], request["taskid"], year, commitid, modified)
+                db.clear_jobid(projectid, taskid, year)
+                db.clear_errstatus(projectid, taskid, year)
+                LOG.info("Speech processing result received successfully for project ID: {}, Task ID: {}".format(projectid, taskid))
+        except Exception as e:
+            LOG.error("Speech processing failure: {}".format(e))
+
+                with self.db as db:
+                    db.clear_jobid(projectid, taskid, year)
+
+                    if data["errstatus"] != 0:
+                        LOG.error("Speech processing failure: {}".format(data["errstatus"]))
+                        db.set_errstatus(projectid, taskid, year, data["errstatus"])
+                    else:
+                        db.set_errstatus(projectid, taskid, year, "{}".format(e))
 
 
     def _incoming_diarize(self, data, projectid, taskid):
         """
+            Diarize wrapper
         """
-        with sqlite.connect(self._config['projectdb']) as db_conn:
-            db_conn.row_factory = sqlite.Row
-            db_curs = db_conn.cursor()
-
-            # Get task table
-            db_curs.execute("SELECT year FROM projects WHERE projectid=?", (projectid,))
-            entry = db_curs.fetchone()
-            if entry is None:
-                LOG.error("Incoming speech processing error (Project ID: {}, Task ID: {}, Job ID: {})".format(projectid, taskid, jobid))
-                db_curs.execute("UPDATE projects SET jobid=?, errstatus=? WHERE projectid=?", (None, data["errstatus"], projectid))
-                db_conn.commit()
-                raise NotFoundError("Project not found!")
-            entry = dict(entry)
-            year = entry["year"]
-
-            # Fetch jobid
-            db_curs.execute("SELECT jobid "
-                            "FROM T{} "
-                            "WHERE taskid=? AND projectid=?".format(year), (taskid, projectid))
-            entry = db_curs.fetchone()
-            if entry is None:
-                LOG.error("Incoming speech processing error (Project ID: {}, Task ID: {}, Job ID: {})".format(projectid, taskid, jobid))
-                db_curs.execute("UPDATE projects SET jobid=?, errstatus=? WHERE projectid=?", (None, data["errstatus"], projectid))
-                db_conn.commit()
-                raise NotFoundError("Task not found!")
-            entry = dict(entry)
-            jobid = entry["jobid"]
-
-            #Need to check whether project exists?
-            if "CTM" in data: #all went well
-                LOG.info("Speech processing success (Project ID: {}, Task ID: {}, Job ID: {})".format(projectid, taskid, jobid))
-                #Parse CTM file
-                ctm = self._ctm_editor(data["CTM"])
-
-                db_curs.execute("SELECT * FROM T{} WHERE taskid=? AND projectid=?".format(year), (taskid, projectid))
-                task = dict(db_curs.fetchone())
-
-                #TODO: if something goes wrong here....
-                repo.check(os.path.dirname(task["textfile"]))
-                with codecs.open(task["textfile"], "w", "utf-8") as f:
-                    f.write(ctm)
-
-                task["commitid"], task["modified"] = repo.commit(os.path.dirname(task["textfile"]), os.path.basename(task["textfile"]), "Changes saved")
-                db_curs.execute("UPDATE T{} SET commitid=?, modified=?, jobid=?, errstatus=? WHERE taskid=? AND projectid=?".format(year),
-                    (task["commitid"], task["modified"], None, None, taskid, projectid))
-
-            else: #"unlock" and recover error status
-                LOG.error("Speech processing failure (Project ID: {}, Task ID: {}, Job ID: {})".format(projectid, taskid, jobid))
-                db_curs.execute("UPDATE T{} SET jobid=?, errstatus=? WHERE taskid=? AND projectid=?".format(year), (None, data["errstatus"], taskid, projectid))
-            db_conn.commit()
-        LOG.info("Speech processing result received successfully for project ID: {}, Task ID: {}".format(projectid, taskid))
+        self._incoming_base(self, data, projectid, taskid)
 
     def _incoming_recognize(self, data, projectid, taskid):
         """
+            Recognize wrapper
         """
-        with sqlite.connect(self._config['projectdb']) as db_conn:
-            db_conn.row_factory = sqlite.Row
-            db_curs = db_conn.cursor()
-
-            # Get task table
-            db_curs.execute("SELECT year FROM projects WHERE projectid=?", (projectid,))
-            entry = db_curs.fetchone()
-            if entry is None:
-                LOG.error("Incoming speech processing error (Project ID: {}, Task ID: {}, Job ID: {})".format(projectid, taskid, jobid))
-                db_curs.execute("UPDATE projects SET jobid=?, errstatus=? WHERE projectid=?", (None, data["errstatus"], projectid))
-                db_conn.commit()
-                raise NotFoundError("Project not found!")
-            entry = dict(entry)
-            year = entry["year"]
-
-            # Fetch jobid
-            db_curs.execute("SELECT jobid "
-                            "FROM T{} "
-                            "WHERE taskid=? AND projectid=?".format(year), (taskid, projectid))
-            entry = db_curs.fetchone()
-            if entry is None:
-                LOG.error("Incoming speech processing error (Project ID: {}, Task ID: {}, Job ID: {})".format(projectid, taskid, jobid))
-                db_curs.execute("UPDATE projects SET jobid=?, errstatus=? WHERE projectid=?", (None, data["errstatus"], projectid))
-                db_conn.commit()
-                raise NotFoundError("Task not found!")
-            entry = dict(entry)
-            jobid = entry["jobid"]
-
-            #Need to check whether project exists?
-            if "CTM" in data: #all went well
-                LOG.info("Speech processing success (Project ID: {}, Task ID: {}, Job ID: {})".format(projectid, taskid, jobid))
-                #Parse CTM file
-                ctm = self._ctm_editor(data["CTM"])
-
-                db_curs.execute("SELECT * FROM T{} WHERE taskid=? AND projectid=?".format(year), (taskid, projectid))
-                task = dict(db_curs.fetchone())
-
-                #TODO: if something goes wrong here....
-                repo.check(os.path.dirname(task["textfile"]))
-                with codecs.open(task["textfile"], "w", "utf-8") as f:
-                    f.write(ctm)
-
-                task["commitid"], task["modified"] = repo.commit(os.path.dirname(task["textfile"]), os.path.basename(task["textfile"]), "Changes saved")
-                db_curs.execute("UPDATE T{} SET commitid=?, modified=?, jobid=?, errstatus=? WHERE taskid=? AND projectid=?".format(year),
-                    (task["commitid"], task["modified"], None, None, taskid, projectid))
-
-            else: #"unlock" and recover error status
-                LOG.error("Speech processing failure (Project ID: {}, Task ID: {}, Job ID: {})".format(projectid, taskid, jobid))
-                db_curs.execute("UPDATE T{} SET jobid=?, errstatus=? WHERE taskid=? AND projectid=?".format(year), (None, data["errstatus"], taskid, projectid))
-            db_conn.commit()
-        LOG.info("Speech processing result received successfully for project ID: {}, Task ID: {}".format(projectid, taskid))
+        self._incoming_base(self, data, projectid, taskid)
 
     def _incoming_align(self, data, projectid, taskid):
         """
+            Alignment wrapper
         """
-        with sqlite.connect(self._config['projectdb']) as db_conn:
-            db_conn.row_factory = sqlite.Row
-            db_curs = db_conn.cursor()
+        self._incoming_base(self, data, projectid, taskid)
 
-            # Get task table
-            db_curs.execute("SELECT year FROM projects WHERE projectid=?", (projectid,))
-            entry = db_curs.fetchone()
-            if entry is None:
-                LOG.error("Incoming speech processing error (Project ID: {}, Task ID: {}, Job ID: {})".format(projectid, taskid, jobid))
-                db_curs.execute("UPDATE projects SET jobid=?, errstatus=? WHERE projectid=?", (None, data["errstatus"], projectid))
-                db_conn.commit()
-                raise NotFoundError("Project not found!")
-            entry = dict(entry)
-            year = entry["year"]
-
-            # Fetch jobid
-            db_curs.execute("SELECT jobid "
-                            "FROM T{} "
-                            "WHERE taskid=? AND projectid=?".format(year), (taskid, projectid))
-            entry = db_curs.fetchone()
-            if entry is None:
-                LOG.error("Incoming speech processing error (Project ID: {}, Task ID: {}, Job ID: {})".format(projectid, taskid, jobid))
-                db_curs.execute("UPDATE projects SET jobid=?, errstatus=? WHERE projectid=?", (None, data["errstatus"], projectid))
-                db_conn.commit()
-                raise NotFoundError("Task not found!")
-            entry = dict(entry)
-            jobid = entry["jobid"]
-
-            #Need to check whether project exists?
-            if "CTM" in data: #all went well
-                LOG.info("Speech processing success (Project ID: {}, Task ID: {}, Job ID: {})".format(projectid, taskid, jobid))
-                #Parse CTM file
-                ctm = self._ctm_editor(data["CTM"])
-
-                db_curs.execute("SELECT * FROM T{} WHERE taskid=? AND projectid=?".format(year), (taskid, projectid))
-                task = dict(db_curs.fetchone())
-
-                #TODO: if something goes wrong here....
-                repo.check(os.path.dirname(task["textfile"]))
-                with codecs.open(task["textfile"], "w", "utf-8") as f:
-                    f.write(ctm)
-
-                task["commitid"], task["modified"] = repo.commit(os.path.dirname(task["textfile"]), os.path.basename(task["textfile"]), "Changes saved")
-                db_curs.execute("UPDATE T{} SET commitid=?, modified=?, jobid=?, errstatus=? WHERE taskid=? AND projectid=?".format(year),
-                    (task["commitid"], task["modified"], None, None, taskid, projectid))
-
-            else: #"unlock" and recover error status
-                LOG.error("Speech processing failure (Project ID: {}, Task ID: {}, Job ID: {})".format(projectid, taskid, jobid))
-                db_curs.execute("UPDATE T{} SET jobid=?, errstatus=? WHERE taskid=? AND projectid=?".format(year), (None, data["errstatus"], taskid, projectid))
-            db_conn.commit()
-        LOG.info("Speech processing result received successfully for project ID: {}, Task ID: {}".format(projectid, taskid))
-
-
-    def _ctm_editor(self, ctm):
+    def _ctm_editor(self, ctm, textfile):
         """
             Convert the speech server output CTM format to editor format
         """
@@ -575,63 +548,223 @@ class Editor(auth.UserAuth):
         LOG.info("CTM parsing successful..")
         return ctm
 
+    @authlog("Mark task done")
     def task_done(self, request):
         """
             Re-assign this task to collator
         """
-        auth.token_auth(request["token"], self._config["authdb"])
-        #TODO: must perform checks before doing this
-        with sqlite.connect(self._config['projectdb']) as db_conn:
-            db_conn.row_factory = sqlite.Row
-            db_curs = db_conn.cursor()
+        try:
+            with self.db as db:
+                db.check_project_task(request["projectid"], request["taskid"])
+                year = db.get_project(request["projectid"], fields=["year"])["year"]
+                db.task_done(request["projectid"], request["taskid"], year)
 
-            db_curs.execute("SELECT * FROM projects WHERE projectid=?", (request["projectid"],))
-            project = db_curs.fetchone()
-            if project is None:
-                raise NotFoundError("Project not found")
-            project = dict(project)
+            return "Task Marked as Done!"
+        except Exception as e:
+            LOG.error("Mark task done fail: {}".format(e))
+            raise
 
-            db_curs.execute("UPDATE T{} SET ownership=1 WHERE taskid=? AND projectid=?".format(project["year"]), (request["taskid"], request["projectid"]))
-            db_conn.commit()
-
-        return "Task Marked as Done!"
-
+    @authlog("Unlock the task")
     def unlock_task(self, request):
         """
             Cancel speech job
         """
-        #TODO: either speech job or error
-        auth.token_auth(request["token"], self._config["authdb"])
-        with sqlite.connect(self._config['projectdb']) as db_conn:
-            db_conn.row_factory = sqlite.Row
-            db_curs = db_conn.cursor()
+        try:
+            with self.db as db:
+                db.check_project_task(request["projectid"], request["taskid"])
+                project = db.get_project(request["projectid"], fields=["year", "audiofile"])
+                task = db.get_task(request["projectid"], request["taskid"], project["year"], fields=["start", "end", "jobid"])
 
-            db_curs.execute("SELECT * FROM projects WHERE projectid=?", (request["projectid"],))
-            project = db_curs.fetchone()
-            if project is None:
-                raise NotFoundError("Project not found")
-            project = dict(project)
+                if task["jobid"] is None:
+                    raise NotFoundError("No Job has been specified")
 
-            db_curs.execute("SELECT * FROM T{} WHERE taskid=? AND projectid=?".format(project["year"]), (request["taskid"], request["projectid"]))
-            task = db_curs.fetchone()
-            if task is None:
-                raise NotFoundError("Task not found")
-            task = dict(task)
+                #TODO: tell speech server to stop job
 
-            if task["jobid"] is None:
-                raise NotFoundError("No Job has been specified")
+                db.set_jobid(request["projectid"], request["taskid"], project["year"], None)
+                db.delete_incoming(request["projectid"], request["taskid"],)
+                db.delete_outgoing(request["projectid"], request["taskid"], task["start"], task["end"])
 
-            #TODO: tell speech server to stop job
+            return "Speech job cancelled"
+        except Exception as e:
+            LOG.error("Unlock task fail: {}".format(e))
+            raise
 
-            db_curs.execute("UPDATE T{} SET jobid=?, errstatus=? WHERE taskid=? AND projectid=?".format(project["year"]),
-                (None, None, request["taskid"], request["projectid"]))
-            db_curs.execute("DELETE FROM incoming WHERE taskid=? AND projectid=?", (request["taskid"], request["projectid"]))
-            db_curs.execute("DELETE FROM outgoing WHERE projectid=? AND audiofile=? AND start=? AND end=?",
-                (request["projectid"], project["audiofile"], task["start"], task["end"]))
-            db_conn.commit()
+    @authlog("Clear task error status")
+    def clear_error(self, request):
+        """
+            Clear the error status for task
+        """
+        try:
+            with self.db as db:
+                db.check_project_task(request["projectid"], request["taskid"])
+                year = db.get_project(request["projectid"], fields=["year"])["year"]
+                db.set_errstatus(request["projectid"], request["taskid"], year, None)
 
-        return "Speech job cancelled"
+            return "Cleared task error status"
+        except Exception as e:
+            LOG.error("Clear error fail: {}".format(e))
+            raise
 
+
+class EditorDB(sqlite.Connection):
+    def lock(self):
+        self.execute("BEGIN IMMEDIATE")
+
+    def check_project(self, projectid, check_err=False):
+        """This should be run before attempting to make changes to a project,
+           it does the following:
+             -- Locks the DB
+             -- Checks whether the project exists
+             -- Check whether the project is "locked"
+             -- Optionally check whether the project has `errstatus` set
+        """
+        self.lock()
+        row = self.execute("SELECT year, jobid, errstatus FROM projects WHERE projectid=?", (projectid,)).fetchone()
+        if row is None: #project exists?
+            raise NotFoundError("Project not found")
+        row = dict(row)
+        if row["jobid"]: #project clean?
+            raise ConflictError("This project is currently locked with jobid: {}".format(row["jobid"]))
+        if check_err and row["errstatus"]:
+            raise PrevJobError("{}".format(row["errstatus"]))
+
+    def check_project_task(self, projectid, taskid, check_err=False):
+        """This should be run before attempting to make changes to a project,
+           it does the following:
+             -- Locks the DB
+             -- Checks whether the project exists
+             -- Check whether the project is "locked"
+             -- Optionally check whether the project has `errstatus` set
+        """
+        self.lock()
+        row = self.execute("SELECT year, jobid, errstatus FROM projects WHERE projectid=?", (projectid,)).fetchone()
+        if row is None: #project exists?
+            raise NotFoundError("Project not found")
+        row = dict(row)
+        if row["jobid"]: #project clean?
+            raise ConflictError("This project is currently locked with jobid: {}".format(row["jobid"]))
+        if check_err and row["errstatus"]:
+            raise PrevJobError("{}".format(row["errstatus"]))
+
+        row_t = self.execute("SELECT jobid, errstatus FROM T{} WHERE taskid=? AND projectid=?".format(row["year"]), (taskid, projectid,)).fetchone()
+        if row_t is None: #task exists?
+            raise NotFoundError("Task not found")
+        row_t = dict(row_t)
+        if row_t["jobid"]: #task clean?
+            raise ConflictError("This task is currently locked with jobid: {}".format(row_t["jobid"]))
+        if check_err and row_t["errstatus"]:
+            raise PrevJobError("{}".format(row_t["errstatus"]))
+
+    def get_project(self, projectid, fields):
+        """Should typically run `check_project` before doing this.
+        """
+        fields = set(fields)
+        query = "SELECT {} FROM projects WHERE projectid=?".format(", ".join(fields))
+        row = self.execute(query, (projectid,)).fetchone()
+        try:
+            row = dict(row)
+        except TypeError:
+            row = {}
+        return row
+
+    def get_task(self, projectid, taskid, year, fields):
+        fields = set(fields)
+        query = "SELECT {} FROM T{} WHERE taskid=? AND projectid=?".format(", ".join(fields), year)
+        task = self.execute(query, (taskid, projectid)).fetchone()
+        try:
+            row = dict(row)
+        except TypeError:
+            row = {}
+        return row
+
+    def get_tasks(self, this_user):
+        #TODO: this seems very specific
+        # Fetch all the projects which have been assigned
+        self.execute("SELECT projectid FROM projects WHERE assigned='Y'")
+        projectids = map(dict, self.fetchall())
+        if projectids is None:
+            return "No projects have been created"
+        projectids = map(dict, self.fetchall())
+
+        # Check if project is okay
+        project_okay = []
+        for projectid in projectids:
+            self.check_project(projectid, check_err=True)
+            project_okay.append(projectid)
+        if len(project_okay) != 0:
+            return "No projects have been created"
+
+        # Fetch all the years 
+        years = []
+        for projectid in project_okay:
+            _tmp = self.get_project(projectid, fields=["year"])
+            years.append((projectid, _tmp["year"]))
+
+        # Fetch all tasks
+        raw_tasks = []
+        for projectid, year in years:
+            _tmp = self.execute("SELECT * FROM T{} WHERE projectid=? AND editor=?".format(year), (projectid, this_user,)).fetchall()
+
+            if _tmp is not None:
+               _tmp = map(dict, _tmp)
+                for x in _tmp: x.update({"year" : year["year"]})
+                raw_tasks.extend(_tmp)
+
+        return raw_tasks
+
+    def save_text(self, projectid, taskid, year, commitid, modified):
+        self.execute("UPDATE T{} SET commitid=?, modified=? WHERE taskid=? AND projectid=?".format(year),
+            (commitid, modified, taskid, projectid))
+
+    def task_done(self, projectid, taskid, year):
+        self.execute("UPDATE T{} SET ownership=1 WHERE taskid=? AND projectid=?".format(yea), (taskid, projectid))
+
+    def insert_incoming(self, projectid, taskid, inurl, servicetype)
+        self.execute("INSERT INTO incoming (projectid, taskid, url, servicetype) VALUES (?,?,?,?)", (projectid, taskid, inurl, servicetype))
+
+    def insert_outgoing(self, projectid, outurl, audiofile, start, end)
+        self.execute("INSERT INTO outgoing (projectid, url, audiofile, start, end) VALUES (?,?,?,?,?)", (projectid,
+            outurl, audiofile, start, end))
+
+    def delete_incoming_byurl(self, inurl):
+        self.execute("DELETE FROM incoming WHERE url=?", (inurl,))
+
+    def delete_outgoing_byurl(self, outurl):
+        self.execute("DELETE FROM outgoing WHERE url=?", (outurl,))
+
+    def set_jobid(self, projectid, taskid, year, jobid):
+        self.execute("UPDATE T{} SET jobid=? WHERE taskid=? AND projectid=?".format(year), (jobid, taskid, projectid))
+
+    def set_errstatus(self, projectid, taskid, year, message)
+        self.execute("UPDATE T{} SET errstatus=? WHERE taskid=? AND projectid=?".format(year), (message, taskid, projectid))
+
+    def delete_incoming(self, projectid, taskid):
+        self.execute("DELETE FROM incoming WHERE taskid=? AND projectid=?", (taskid, projectid))
+
+    def delete_outgoing(self, projectid, audiofile, start, end):
+        self.execute("DELETE FROM outgoing WHERE projectid=? AND audiofile=? AND start=? AND end=?", (projectid, audiofile, start, end))
+
+    def get_outgoing(self, uri):
+        row = self.execute("SELECT projectid, audiofile, start, end FROM outgoing WHERE url=?", (uri,)).fetchone()
+        if row is not None:
+            self.execute("DELETE FROM outgoing WHERE url=?", (uri,))
+            row = dict(row)
+        else:
+            row = {}
+        return row
+
+    def get_incoming(self, uri):
+        row = self.execute("SELECT projectid, taskid, servicetype FROM incoming WHERE url=?", (uri,)).fetchone()
+        if row is not None:
+            self.execute("DELETE FROM incoming WHERE url=?", (uri,))
+            row = dict(row)
+        else:
+            row = {}
+        return row
+
+
+class PrevJobError(Exception):
+    pass
 
 if __name__ == "__main__":
     pass
