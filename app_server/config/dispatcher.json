@@ -38,11 +38,17 @@
 	    "/projects/uploadaudio" : { "method" : "service.projects.Projects.upload_audio",
 					"parameters" : ["token", "projectid", "filename", "file"] },
 	    "/projects/saveproject" : { "method" : "service.projects.Projects.save_project",
-					"parameters" : ["token", "projectid", "tasks"] },
+					"parameters" : ["token", "projectid", "tasks", "project"] },
+	    "/projects/deleteproject" : { "method" : "service.projects.Projects.delete_project",
+					  "parameters" : ["token", "projectid"] },
 	    "/projects/assigntasks" : { "method" : "service.projects.Projects.assign_tasks",
 					"parameters" : ["token", "projectid"] },
+	    "/projects/updateproject" : { "method" : "service.projects.Projects.update_project",
+					  "parameters" : ["token", "projectid", "tasks", "project"] },
 	    "/projects/diarizeaudio" : { "method" : "service.projects.Projects.diarize_audio",
 					 "parameters" : ["token", "projectid"] },
+	    "/projects/unlockproject" : { "method" : "service.projects.Projects.unlock_project",
+					  "parameters" : ["token", "projectid"] },
 
 	    "/editor/admin/login" : { "method" : "service.editor.Admin.login",
 					"parameters" : ["username", "password"] },
@@ -85,10 +91,10 @@
 	},
 
     	"GET" : {
-    	    "/projects/projectaudio" : { "method" : "service.projects.Projects.project_audio",
-					 "parameters" : ["token", "projectid"] },
     	    "/editor/taskaudio" : { "method" : "service.editor.Editor.task_audio",
-					 "parameters" : ["token", "projectid", "taskid"] }
+					 "parameters" : ["token", "projectid", "taskid"] },
+    	    "/projects/getaudio" : { "method" : "service.projects.Projects.get_audio",
+				     "parameters" : ["token", "projectid"] }
 	},
 
     	"PUT" : {}
