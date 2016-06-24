@@ -39,7 +39,7 @@ if __name__ == "__main__":
                                                                             "servicetype VARCHAR(128)"])))
     db_curs.execute("CREATE TABLE outgoing ({})".format(", ".join(["projectid VARCHAR(36) PRIMARY KEY",
                                                                    "url VARCHAR(128)",
-                                                                   "audiofile VARCHAR(128)"
+                                                                   "audiofile VARCHAR(128)",
                                                                    "start REAL",
                                                                    "end REAL"])))
     db_conn.commit()

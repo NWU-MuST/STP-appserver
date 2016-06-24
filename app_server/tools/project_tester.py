@@ -219,9 +219,10 @@ class Project:
         """
         if self.user_token is not None and self.projectid is not None:
             headers = {"Content-Type" : "application/json"}
-            tasks = [{"editor" : "neil", "collator" : "neil", "start" : 0.0, "end" : 20.0, "language" : "English"},
-                    {"editor" : "daniel", "collator" : "daniel", "start" : 20.0, "end" : 40.0, "language" : "Afrikaans"},
-                    {"editor" : "gamer", "collator" : "gamer", "start" : 40.0, "end" : 309.56, "language" : "Zulu"}]
+            #tasks = [{"editor" : "neil", "collator" : "neil", "start" : 0.0, "end" : 20.0, "language" : "English"},
+            #        {"editor" : "daniel", "collator" : "daniel", "start" : 20.0, "end" : 40.0, "language" : "Afrikaans"},
+            #        {"editor" : "gamer", "collator" : "gamer", "start" : 40.0, "end" : 309.56, "language" : "Zulu"}]
+            tasks = [{"editor" : "neil", "collator" : "neil", "start" : 0.0, "end" : 19.96, "language" : "English"}]
             project = {"projectname": "saved_project"}
             data = {"token": self.user_token, "projectid" : self.projectid, "tasks": tasks, "project": project}
             res = requests.post(BASEURL + "projects/saveproject", headers=headers, data=json.dumps(data))

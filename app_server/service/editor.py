@@ -11,6 +11,8 @@ import os
 import requests
 import logging
 import codecs
+from functools import wraps
+from types import FunctionType
 
 try:
     from sqlite3 import dbapi2 as sqlite
@@ -90,10 +92,11 @@ class Editor(auth.UserAuth):
             Task state is: CANOPEN, READONLY, SPEECHLOCKED, ERROR
         """
         with self.db as db:
-            raw_tasks = db.tasks(username)
+            raw_tasks = db.get_tasks(username)
+            LOG.debug("{}".format(raw_tasks))
             if type(raw_tasks) in [str, unicode]:
                 return raw_tasks
-            elif type(raw_tasks) is list and len(raw_tasks) == 0:
+            elif type(raw_tasks) is list and not raw_tasks:
                 return "No tasks assigned to editor"
 
             # Sort tasks
@@ -208,22 +211,24 @@ class Editor(auth.UserAuth):
                 self._test_read(textfile)
 
                 textdir = os.path.dirname(textfile)
-                #TODO: check errors, not sure how we recover from here
-                repo.check(textdir)
-                with codecs.open(textfile, "w", "utf-8") as f:
-                    f.write(request["text"])
-                commitid, modified = repo.commit(textdir, os.path.basename(textfile), "Changes saved")
-                db.save_text(request["projectid"], request["taskid"], year, commitid, modified)
-                db.set_jobid(request["projectid"], request["taskid"], year, None)
+                try: # Handle repo errors
+                    #TODO: check errors, not sure how we recover from here
+                    repo.check(textdir)
+                    with codecs.open(textfile, "w", "utf-8") as f:
+                        f.write(request["text"])
+                    commitid, modified = repo.commit(textdir, os.path.basename(textfile), "Changes saved")
+                    db.save_text(request["projectid"], request["taskid"], year, commitid, modified)
+                    db.set_jobid(request["projectid"], request["taskid"], year, None)
+                except Exception as e:
+                    raise
 
             return "Text Saved!"
         except Exception as e:# TODO: exception within exception
             LOG.error("Save text failed: {}".format(e))
             with self.db as db:
-                db.lock()
                 year = db.get_project(request["projectid"], fields=["year"])["year"]
-                db.set_jobid(request["projectid"], request["taskid"], year, None)
                 db.set_errstatus(request["projectid"], request["taskid"], year, "{}".format(e))
+                db.set_jobid(request["projectid"], request["taskid"], year, None)
             raise
 
     @authlog("Perform diarize")
@@ -260,10 +265,9 @@ class Editor(auth.UserAuth):
         except Exception as e:
             LOG.error("Diarize audio failed: {}".format(e))
             with self.db as db:
-                db.lock()
                 year = db.get_project(request["projectid"], fields=["year"])["year"]
-                db.set_jobid(request["projectid"], request["taskid"], year, None)
                 db.set_errstatus(request["projectid"], request["taskid"], year, "{}".format(e))
+                db.set_jobid(request["projectid"], request["taskid"], year, None)
             raise
 
     @authlog("Perform recognize")
@@ -302,10 +306,9 @@ class Editor(auth.UserAuth):
         except Exception as e:
             LOG.error("Recognize audio failed: {}".format(e))
             with self.db as db:
-                db.lock()
                 year = db.get_project(request["projectid"], fields=["year"])["year"]
-                db.set_jobid(request["projectid"], request["taskid"], year, None)
                 db.set_errstatus(request["projectid"], request["taskid"], year, "{}".format(e))
+                db.set_jobid(request["projectid"], request["taskid"], year, None)
             raise
 
     def _recognize_segments(self, textfile):
@@ -351,10 +354,9 @@ class Editor(auth.UserAuth):
         except Exception as e:
             LOG.error("Align audio failed: {}".format(e))
             with self.db as db:
-                db.lock()
                 year = db.get_project(request["projectid"], fields=["year"])["year"]
-                db.set_jobid(request["projectid"], request["taskid"], year, None)
                 db.set_errstatus(request["projectid"], request["taskid"], year, "{}".format(e))
+                db.set_jobid(request["projectid"], request["taskid"], year, None)
             raise
 
     def _align_segments(self, textfile):
@@ -400,9 +402,9 @@ class Editor(auth.UserAuth):
         jobreq["subsystem"] = subsystem
         jobreq.update(parameters)
 
-        LOG.debug(os.path.join(SPEECHSERVER, self._config["speechservices"]))
+        LOG.debug(os.path.join(SPEECHSERVER, self._config["speechservices"]["add"]))
         LOG.debug("{}".format(jobreq))
-        reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]), data=json.dumps(jobreq))
+        reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]["add"]), data=json.dumps(jobreq))
         reqstatus = reqstatus.json()
         #reqstatus = {"jobid": auth.gen_token()} #DEMIT: dummy call for testing!
 
@@ -419,11 +421,11 @@ class Editor(auth.UserAuth):
         #Something went wrong: undo project setup
         with self.db as db:
             db.lock()
-            db.clear_jobid(request["projectid"], request["taskid"], project["year"])
             if "message" in reqstatus:
                 db.set_errstatus(request["projectid"], request["taskid"], project["year"], reqstatus["message"])
             db.delete_incoming_byurl(inurl)
             db.delete_outgoing_byurl(outurl)
+            db.set_jobid(request["projectid"], request["taskid"], project["year"], None)
 
         LOG.error("Speech service request failed for project ID: {}, task ID: {}".format(request["projectid"], request["taskid"]))
         return reqstatus #DEMIT TODO: translate error from speech server!
@@ -433,22 +435,21 @@ class Editor(auth.UserAuth):
         """
         try:
             LOG.debug(uri)
-            with self.db:
+            with self.db as db:
                 row = db.get_outgoing(uri)
                 LOG.debug(row)
                 #URL exists?
                 if not row:
                     raise MethodNotAllowedError(uri)
-                LOG.info("Returning audio for project ID: {}".format(entry["projectid"]))
+                LOG.info("Returning audio for project ID: {}".format(row["projectid"]))
 
                 # Check if audio range is available
-                if row["start"] is not None and entry["end"] is not None:
-                    return {"mime": "audio/ogg", "filename": row["file"], "range" : (float(row["start"]), float(row["end"]))}
+                if row["start"] is not None and row["end"] is not None:
+                    return {"mime": "audio/ogg", "filename": row["audiofile"], "range" : (float(row["start"]), float(row["end"]))}
                 else:
-                    return {"mime": "audio/ogg", "filename": row["file"]}
+                    return {"mime": "audio/ogg", "filename": row["audiofile"]}
         except Exception as e:
             LOG.error("Requested outgoing resource failed: {}".format(e))
-
 
     def incoming(self, uri, data):
         """
@@ -462,7 +463,7 @@ class Editor(auth.UserAuth):
                 if not row:
                     raise MethodNotAllowedError(uri)
 
-                if not row["servicetype"] in self._config["speechservices"]:
+                if not row["servicetype"] in self._config["speechservices"]["services"]:
                     raise Exception("Service type '{}' not defined in AppServer".format(row["servicetype"]))
 
                 handler = getattr(self, "_incoming_{}".format(row["servicetype"]))
@@ -484,8 +485,9 @@ class Editor(auth.UserAuth):
                 if not year:
                     raise ConflictError("(projectid={}) Project no longer exists".format(projectid))
 
-            if len(data["errstatus"]) != 0:
-                raise Exception("Speech job failed: (Project ID: {}, Task ID: {})".format(projectid, taskid))
+            if "errstatus" in data:
+                if len(data["errstatus"]) != 0:
+                    raise Exception("Speech job failed: (Project ID: {}, Task ID: {})".format(projectid, taskid))
             if "CTM" not in data:
                 raise Exception("No CTM found in data: (Project ID: {}, Task ID: {})".format(projectid, taskid))
 
@@ -495,49 +497,54 @@ class Editor(auth.UserAuth):
                     raise ConflictError("No job expected (Project ID: {}, Task ID: {})".format(projectid, taskid))
 
                 textfile = db.get_task(projectid, taskid, year, fields=["textfile"])["textfile"]
-                if task["textfile"] is None or len(task["textfile"]) == 0:
+                if textfile is None or len(textfile) == 0:
                     raise NotFoundError("This task has no text file")
-                self._test_read(task["textfile"])
+                self._test_read(textfile)
 
                 ctm = self._ctm_editor(data["CTM"], textfile)
-                repo.check(os.path.dirname(textfile))
-                with codecs.open(textfile, "w", "utf-8") as f:
-                    f.write(ctm)
-                commitid, modified = repo.commit(os.path.dirname(textfile), os.path.basename(textfile), "Changes saved")
-                db.save_text(request["projectid"], request["taskid"], year, commitid, modified)
-                db.clear_jobid(projectid, taskid, year)
-                db.clear_errstatus(projectid, taskid, year)
-                LOG.info("Speech processing result received successfully for project ID: {}, Task ID: {}".format(projectid, taskid))
+
+                try: # Handle repo errors
+                    repo.check(os.path.dirname(textfile))
+                    with codecs.open(textfile, "w", "utf-8") as f:
+                        f.write(ctm)
+                    commitid, modified = repo.commit(os.path.dirname(textfile), os.path.basename(textfile), "Changes saved")
+                    db.save_text(projectid, taskid, year, commitid, modified)
+                    db.set_jobid(projectid, taskid, year, None)
+                    db.set_errstatus(projectid, taskid, year, None)
+                    LOG.info("Speech processing result received successfully for project ID: {}, Task ID: {}".format(projectid, taskid))
+                except Exception as e:
+                    raise
+
         except Exception as e:
             LOG.error("Speech processing failure: {}".format(e))
-
-                with self.db as db:
-                    db.clear_jobid(projectid, taskid, year)
-
-                    if data["errstatus"] != 0:
+            with self.db as db:
+                if "errstatus" in data:
+                    if  data["errstatus"] != 0:
                         LOG.error("Speech processing failure: {}".format(data["errstatus"]))
                         db.set_errstatus(projectid, taskid, year, data["errstatus"])
                     else:
                         db.set_errstatus(projectid, taskid, year, "{}".format(e))
-
+                else:
+                    db.set_errstatus(projectid, taskid, year, "{}".format(e))
+                db.set_jobid(projectid, taskid, year, None)
 
     def _incoming_diarize(self, data, projectid, taskid):
         """
             Diarize wrapper
         """
-        self._incoming_base(self, data, projectid, taskid)
+        self._incoming_base(data, projectid, taskid)
 
     def _incoming_recognize(self, data, projectid, taskid):
         """
             Recognize wrapper
         """
-        self._incoming_base(self, data, projectid, taskid)
+        self._incoming_base(data, projectid, taskid)
 
     def _incoming_align(self, data, projectid, taskid):
         """
             Alignment wrapper
         """
-        self._incoming_base(self, data, projectid, taskid)
+        self._incoming_base(data, projectid, taskid)
 
     def _ctm_editor(self, ctm, textfile):
         """
@@ -571,14 +578,18 @@ class Editor(auth.UserAuth):
         """
         try:
             with self.db as db:
-                db.check_project_task(request["projectid"], request["taskid"])
+                db.check_project_task(request["projectid"], request["taskid"], check_task_job=False)
                 project = db.get_project(request["projectid"], fields=["year", "audiofile"])
                 task = db.get_task(request["projectid"], request["taskid"], project["year"], fields=["start", "end", "jobid"])
 
                 if task["jobid"] is None:
                     raise NotFoundError("No Job has been specified")
 
-                #TODO: tell speech server to stop job
+                jobreq = {"token" : self._speech.token(), "jobid" : task["jobid"]}
+                LOG.debug(os.path.join(SPEECHSERVER, self._config["speechservices"]["delete"]))
+                LOG.debug("{}".format(jobreq))
+                reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]["delete"]), data=json.dumps(jobreq))
+                reqstatus = reqstatus.json()
 
                 db.set_jobid(request["projectid"], request["taskid"], project["year"], None)
                 db.delete_incoming(request["projectid"], request["taskid"],)
@@ -628,7 +639,7 @@ class EditorDB(sqlite.Connection):
         if check_err and row["errstatus"]:
             raise PrevJobError("{}".format(row["errstatus"]))
 
-    def check_project_task(self, projectid, taskid, check_err=False):
+    def check_project_task(self, projectid, taskid, check_err=False, check_task_job=True):
         """This should be run before attempting to make changes to a project,
            it does the following:
              -- Locks the DB
@@ -650,8 +661,9 @@ class EditorDB(sqlite.Connection):
         if row_t is None: #task exists?
             raise NotFoundError("Task not found")
         row_t = dict(row_t)
-        if row_t["jobid"]: #task clean?
-            raise ConflictError("This task is currently locked with jobid: {}".format(row_t["jobid"]))
+        if check_task_job:
+            if row_t["jobid"]: #task clean?
+                raise ConflictError("This task is currently locked with jobid: {}".format(row_t["jobid"]))
         if check_err and row_t["errstatus"]:
             raise PrevJobError("{}".format(row_t["errstatus"]))
 
@@ -670,7 +682,7 @@ class EditorDB(sqlite.Connection):
     def get_task(self, projectid, taskid, year, fields):
         fields = set(fields)
         query = "SELECT {} FROM T{} WHERE taskid=? AND projectid=?".format(", ".join(fields), year)
-        task = self.execute(query, (taskid, projectid)).fetchone()
+        row = self.execute(query, (taskid, projectid)).fetchone()
         try:
             row = dict(row)
         except TypeError:
@@ -680,18 +692,18 @@ class EditorDB(sqlite.Connection):
     def get_tasks(self, this_user):
         #TODO: this seems very specific
         # Fetch all the projects which have been assigned
-        self.execute("SELECT projectid FROM projects WHERE assigned='Y'")
-        projectids = map(dict, self.fetchall())
+        projectids = self.execute("SELECT projectid FROM projects WHERE assigned='Y'").fetchall()
         if projectids is None:
             return "No projects have been created"
-        projectids = map(dict, self.fetchall())
+        projectids = map(dict, projectids)
+        LOG.debug("{}".format(projectids))
 
         # Check if project is okay
         project_okay = []
         for projectid in projectids:
-            self.check_project(projectid, check_err=True)
-            project_okay.append(projectid)
-        if len(project_okay) != 0:
+            self.check_project(projectid["projectid"], check_err=True)
+            project_okay.append(projectid["projectid"])
+        if not project_okay:
             return "No projects have been created"
 
         # Fetch all the years 
@@ -699,6 +711,7 @@ class EditorDB(sqlite.Connection):
         for projectid in project_okay:
             _tmp = self.get_project(projectid, fields=["year"])
             years.append((projectid, _tmp["year"]))
+        LOG.debug("{}".format(years))
 
         # Fetch all tasks
         raw_tasks = []
@@ -706,8 +719,8 @@ class EditorDB(sqlite.Connection):
             _tmp = self.execute("SELECT * FROM T{} WHERE projectid=? AND editor=?".format(year), (projectid, this_user,)).fetchall()
 
             if _tmp is not None:
-               _tmp = map(dict, _tmp)
-                for x in _tmp: x.update({"year" : year["year"]})
+                _tmp = map(dict, _tmp)
+                for x in _tmp: x.update({"year" : year})
                 raw_tasks.extend(_tmp)
 
         return raw_tasks
@@ -717,12 +730,12 @@ class EditorDB(sqlite.Connection):
             (commitid, modified, taskid, projectid))
 
     def task_done(self, projectid, taskid, year):
-        self.execute("UPDATE T{} SET ownership=1 WHERE taskid=? AND projectid=?".format(yea), (taskid, projectid))
+        self.execute("UPDATE T{} SET ownership=1 WHERE taskid=? AND projectid=?".format(year), (taskid, projectid))
 
-    def insert_incoming(self, projectid, taskid, inurl, servicetype)
+    def insert_incoming(self, projectid, taskid, inurl, servicetype):
         self.execute("INSERT INTO incoming (projectid, taskid, url, servicetype) VALUES (?,?,?,?)", (projectid, taskid, inurl, servicetype))
 
-    def insert_outgoing(self, projectid, outurl, audiofile, start, end)
+    def insert_outgoing(self, projectid, outurl, audiofile, start, end):
         self.execute("INSERT INTO outgoing (projectid, url, audiofile, start, end) VALUES (?,?,?,?,?)", (projectid,
             outurl, audiofile, start, end))
 
@@ -735,7 +748,7 @@ class EditorDB(sqlite.Connection):
     def set_jobid(self, projectid, taskid, year, jobid):
         self.execute("UPDATE T{} SET jobid=? WHERE taskid=? AND projectid=?".format(year), (jobid, taskid, projectid))
 
-    def set_errstatus(self, projectid, taskid, year, message)
+    def set_errstatus(self, projectid, taskid, year, message):
         self.execute("UPDATE T{} SET errstatus=? WHERE taskid=? AND projectid=?".format(year), (message, taskid, projectid))
 
     def delete_incoming(self, projectid, taskid):

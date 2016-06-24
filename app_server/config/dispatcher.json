@@ -71,7 +71,7 @@
 				   "parameters" : ["token"] },
 	    "/editor/loadtasks" : { "method" : "service.editor.Editor.load_tasks",
 				   "parameters" : ["token"] },
-	    "/editor/tasktext" : { "method" : "service.editor.Editor.task_text",
+	    "/editor/gettext" : { "method" : "service.editor.Editor.get_text",
 				   "parameters" : ["token", "taskid", "projectid"] },
 	    "/editor/savetext" : { "method" : "service.editor.Editor.save_text",
 				   "parameters" : ["token", "taskid", "projectid", "text"] },
@@ -83,15 +83,15 @@
 				   "parameters" : ["token", "taskid", "projectid"] },
 	    "/editor/taskdone" : { "method" : "service.editor.Editor.task_done",
 				   "parameters" : ["token", "taskid", "projectid"] },
-	    "/editor/canceljob" : { "method" : "service.editor.Editor.cancel_job",
+	    "/editor/unlocktask" : { "method" : "service.editor.Editor.unlock_task",
 				   "parameters" : ["token", "taskid", "projectid"] },
-	    "/editor/updatetask" : { "method" : "service.editor.Editor.update_task",
-				   "parameters" : ["token", "taskid", "projectid", "field", "value"] }
+	    "/editor/clearerror" : { "method" : "service.editor.Editor.clear_error",
+				   "parameters" : ["token", "taskid", "projectid"] }
 
 	},
 
     	"GET" : {
-    	    "/editor/taskaudio" : { "method" : "service.editor.Editor.task_audio",
+    	    "/editor/getaudio" : { "method" : "service.editor.Editor.get_audio",
 					 "parameters" : ["token", "projectid", "taskid"] },
     	    "/projects/getaudio" : { "method" : "service.projects.Projects.get_audio",
 				     "parameters" : ["token", "projectid"] }
