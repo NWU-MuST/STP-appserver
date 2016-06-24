@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals, division, print_function #Py2
 
+import string
+import random
 import json
 import time
 import uuid, base64
@@ -16,6 +18,10 @@ import bcrypt #Ubuntu/Debian: apt-get install python-bcrypt
 from httperrs import NotAuthorizedError, ConflictError
 
 LOG = logging.getLogger("APP.AUTH")
+
+def gen_pword(length=7):
+    alphabet = string.ascii_letters + string.digits + '!@#$%^&*()'
+    return "".join(random.choice(alphabet) for i in range(length))
 
 def gen_token():
     return base64.urlsafe_b64encode(str(uuid.uuid4()))
@@ -64,22 +70,30 @@ class UserAuth(object):
             if entry is None:
                 raise NotAuthorizedError("User not registered")
             else:
-                username, pwhash, salt, name, surname, email = entry
+                username, pwhash, salt, name, surname, email, tmppwhash = entry
                 #Password correct?
-                if pwhash != bcrypt.hashpw(request["password"], salt):
-                    raise NotAuthorizedError("Wrong password")
+                templogin = False
+                inpwhash = bcrypt.hashpw(request["password"], salt)
+                if pwhash != inpwhash:
+                    templogin = True
+                    if tmppwhash:
+                        if tmppwhash != inpwhash:
+                            raise NotAuthorizedError("Wrong password")
+                    else:
+                        raise NotAuthorizedError("Wrong password")
             #User already logged in?
             db_curs.execute("SELECT * FROM tokens WHERE username=?", (username,))
             entry = db_curs.fetchone()
             if not entry is None:
                 raise ConflictError("User already logged in")
-            #All good, create new token, insert and return
+            #All good, create new token, remove tmppwhash
             token = gen_token()
             db_curs.execute("INSERT INTO tokens (token, username, expiry) VALUES(?,?,?)", (token,
                                                                                            username,
                                                                                            time.time() + self._config["toklife"]))
+            db_curs.execute("UPDATE users SET tmppwhash=? WHERE username=?", (None, username))
         LOG.info("User login: {}".format(request["username"]))
-        return {"token": token}
+        return {"token": token, "templogin": templogin}
 
     def logout(self, request):
         """The DB/service actually logged out of is determined by the service
@@ -113,15 +127,58 @@ class UserAuth(object):
             if entry is None:
                 raise NotAuthorizedError("User not registered")
             else:
-                username, pwhash, salt, name, surname, email = entry
+                username, pwhash, salt, name, surname, email, tmppwhash = entry
                 #Password correct?
-                if pwhash != bcrypt.hashpw(request["password"], salt):
-                    raise NotAuthorizedError("Wrong password")
+                inpwhash = bcrypt.hashpw(request["password"], salt)
+                if pwhash != inpwhash:
+                    if tmppwhash:
+                        if tmppwhash != inpwhash:
+                            raise NotAuthorizedError("Wrong password")
+                    else:
+                        raise NotAuthorizedError("Wrong password")
             #logout
             db_curs.execute("DELETE FROM tokens WHERE username=?", (username,))
         LOG.info("User logout: {}".format(username))
         return "User logged out"
 
+    def change_password(self, request):
+        """Allows a logged-in user (token) to change the password.
+        """
+        raise NotImplementedError
+        # with sqlite.connect(self._config["authdb"]) as db_conn:
+        #     db_curs = db_conn.cursor()
+        #     db_curs.execute("SELECT * FROM tokens WHERE token=?", (request["token"],))
+        #     entry = db_curs.fetchone()
+        #     if entry is None:
+        #         raise NotAuthorizedError("Token not valid")
+        #     token, username, expiry = entry
+
+    def reset_password(self, request):
+        """Generates a random new temporary password for one-time use and
+           sends this to the registered email address
+
+           DEMIT: May also want to request using email -- but have to
+           ensure unique email fields in Admin.add_user
+        """
+        with sqlite.connect(self._config["authdb"]) as db_conn:
+            db_curs = db_conn.cursor()
+            #Get user info
+            db_curs.execute("SELECT * FROM users WHERE username=?", (request["username"],))
+            entry = db_curs.fetchone()
+            #User exists?
+            if entry is None:
+                raise NotAuthorizedError("User not registered")
+            else:
+                username, pwhash, salt, name, surname, email, tmppwhash = entry
+            #Generate random password and insert
+            tmppw = gen_pword()
+            tmppwhash = bcrypt.hashpw(tmppw, salt)
+            db_curs.execute("UPDATE users SET tmppwhash=? WHERE username=?", (tmppwhash, username))
+        #DEMIT: NotImplementedError: At some point email this automatically to the user
+        LOG.info("Temp password created: {}".format(username))
+        return tmppw
+        
+            
 
 def test():
     """Informal tests...
@@ -135,7 +192,7 @@ def test():
     #create test DB and add testuser
     db_conn = create_new_db("/tmp/test.db")
     db_curs = db_conn.cursor()
-    db_curs.execute("INSERT INTO users ( username, pwhash, salt, name, surname, email ) VALUES (?,?,?,?,?,?)", ("testuser", pwhash, salt, "", "", ""))
+    db_curs.execute("INSERT INTO users ( username, pwhash, salt, name, surname, email, tmppwhash ) VALUES (?,?,?,?,?,?,?)", ("testuser", pwhash, salt, None, None, None, None))
     db_conn.commit()
     #test UserAuth
     a = UserAuth()

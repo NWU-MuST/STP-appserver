@@ -24,6 +24,9 @@ def hashpassw(password):
 class Admin(auth.UserAuth):
     """Implements all functions related to updating user information in
        the auth database.
+
+       DEMIT: We also need to ensure that email addresses are unique
+       (password reset mechanism)
     """
     def add_user(self, request):
         auth.token_auth(request["token"], self._config["authdb"])
@@ -31,13 +34,13 @@ class Admin(auth.UserAuth):
         try:
             with sqlite.connect(self._config["target_authdb"]) as db_conn:
                 db_curs = db_conn.cursor()
-                db_curs.execute("INSERT INTO users (username, pwhash, salt, name, surname, email) VALUES (?,?,?,?,?,?)", (request["username"],
-                                                                                                                          pwhash,
-                                                                                                                          salt,
-                                                                                                                          request["name"],
-                                                                                                                          request["surname"],
-                                                                                                                          request["email"]))
-                db_conn.commit()
+                db_curs.execute("INSERT INTO users (username, pwhash, salt, name, surname, email, tmppwhash) VALUES (?,?,?,?,?,?,?)", (request["username"],
+                                                                                                                                       pwhash,
+                                                                                                                                       salt,
+                                                                                                                                       request["name"],
+                                                                                                                                       request["surname"],
+                                                                                                                                       request["email"],
+                                                                                                                                       None))
         except sqlite.IntegrityError as e:
             raise ConflictError(e)
         except KeyError as e:
@@ -50,7 +53,6 @@ class Admin(auth.UserAuth):
         with sqlite.connect(self._config["target_authdb"]) as db_conn:
             db_curs = db_conn.cursor()
             db_curs.execute("DELETE FROM users WHERE username=?", (request["username"],))
-            db_conn.commit()
         LOG.info("Deleted user: {}".format(request["username"]))
         return "User removed"
 
@@ -62,10 +64,9 @@ class Admin(auth.UserAuth):
             entry = db_curs.fetchone()
             if entry is None:
                 raise NotFoundError("User not registered")
-            else:
-                username, pwhash, salt, name, surname, email = entry
-                LOG.info("Returning info for user: {}".format(request["username"]))
-                return {"name": name, "surname": surname, "email": email}
+            username, pwhash, salt, name, surname, email, tmppwhash = entry
+        LOG.info("Returning info for user: {}".format(request["username"]))
+        return {"name": name, "surname": surname, "email": email}
 
     def update_user(self, request):
         auth.token_auth(request["token"], self._config["authdb"])
@@ -84,7 +85,6 @@ class Admin(auth.UserAuth):
                 salt, pwhash = hashpassw(request["password"])
                 db_curs.execute("UPDATE users SET pwhash=? WHERE username=?", (pwhash, request["username"]))
                 db_curs.execute("UPDATE users SET salt=? WHERE username=?", (salt, request["username"]))
-            db_conn.commit()
         LOG.info("Updated info for user: {}".format(request["username"]))
         return "User info updated"
 
@@ -94,7 +94,7 @@ class Admin(auth.UserAuth):
         with sqlite.connect(self._config["target_authdb"]) as db_conn:
             db_curs = db_conn.cursor()
             for entry in db_curs.execute("SELECT * FROM users"):
-                username, pwhash, salt, name, surname, email = entry
+                username, pwhash, salt, name, surname, email, tmppwhash = entry
                 users[username] = {"name": name, "surname": surname, "email": email}
         LOG.info("Returning user list")
         return users
