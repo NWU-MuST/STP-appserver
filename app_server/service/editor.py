@@ -133,7 +133,7 @@ class Editor(auth.UserAuth):
         """
         try:
             with self.db as db:
-                db.check_project_task(request["projectid"], request["taskid"])
+                db.check_project_task(request["projectid"], request["taskid"], check_err=True)
 
             with self.db as db:
                 project = db.get_project(request["projectid"], fields=["year", "audiofile"])
@@ -166,7 +166,7 @@ class Editor(auth.UserAuth):
         """
         try:
             with self.db as db:
-                db.check_project_task(request["projectid"], request["taskid"])
+                db.check_project_task(request["projectid"], request["taskid"], check_err=True)
 
             with self.db as db:
                 year = db.get_project(request["projectid"], fields=["year"])["year"]
@@ -195,7 +195,7 @@ class Editor(auth.UserAuth):
         try:
             #TODO: check if you can save to this task -- check lock
             with self.db as db:
-                db.check_project_task(request["projectid"], request["taskid"])
+                db.check_project_task(request["projectid"], request["taskid"], check_err=True)
 
             with self.db as db:
                 year = db.get_project(request["projectid"], fields=["year"])["year"]
@@ -239,7 +239,7 @@ class Editor(auth.UserAuth):
         """
         try:
             with self.db as db:
-                db.check_project_task(request["projectid"], request["taskid"])
+                db.check_project_task(request["projectid"], request["taskid"], check_err=True)
                 project = db.get_project(request["projectid"], fields=["audiofile", "year"])
                 task = db.get_task(request["projectid"], request["taskid"], project["year"], fields=["textfile","start","end"])
                 db.set_jobid(request["projectid"], request["taskid"], project["year"], "diarize_task")
@@ -277,7 +277,7 @@ class Editor(auth.UserAuth):
         """
         try:
             with self.db as db:
-                db.check_project_task(request["projectid"], request["taskid"])
+                db.check_project_task(request["projectid"], request["taskid"], check_err=True)
                 project = db.get_project(request["projectid"], fields=["audiofile", "year"])
                 task = db.get_task(request["projectid"], request["taskid"], project["year"], fields=["textfile","start","end"])
                 db.set_jobid(request["projectid"], request["taskid"], project["year"], "recognize_task")
@@ -326,7 +326,7 @@ class Editor(auth.UserAuth):
         """
         try:
             with self.db as db:
-                db.check_project_task(request["projectid"], request["taskid"])
+                db.check_project_task(request["projectid"], request["taskid"], check_err=True)
                 project = db.get_project(request["projectid"], fields=["audiofile", "year"])
                 task = db.get_task(request["projectid"], request["taskid"], project["year"], fields=["textfile","start","end"])
                 db.set_jobid(request["projectid"], request["taskid"], project["year"], "align_task")
@@ -562,7 +562,7 @@ class Editor(auth.UserAuth):
         """
         try:
             with self.db as db:
-                db.check_project_task(request["projectid"], request["taskid"])
+                db.check_project_task(request["projectid"], request["taskid"], check_err=True)
                 year = db.get_project(request["projectid"], fields=["year"])["year"]
                 db.task_done(request["projectid"], request["taskid"], year)
 
@@ -578,7 +578,7 @@ class Editor(auth.UserAuth):
         """
         try:
             with self.db as db:
-                db.check_project_task(request["projectid"], request["taskid"], check_task_job=False)
+                db.check_project_task(request["projectid"], request["taskid"], check_err=True, check_task_job=False)
                 project = db.get_project(request["projectid"], fields=["year", "audiofile"])
                 task = db.get_task(request["projectid"], request["taskid"], project["year"], fields=["start", "end", "jobid"])
 

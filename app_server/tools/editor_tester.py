@@ -282,7 +282,7 @@ if __name__ == "__main__":
                     print("LOGIN - user login")
                     print("LOGOUT - user logout\n")
                     print("LOADTASKS - load tasks belonging to user")
-                    print("TASKAUDIO - return task audio")
+                    print("GETAUDIO - return task audio")
                     print("GETTEXT - return task text")
                     print("SAVETEXT - save text to file")
                     print("CLEARTEXT - remove text from file")
