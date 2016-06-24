@@ -86,6 +86,20 @@ class Project:
             print("Admin not logged in!")
         print('')
 
+    def logout2(self):
+        """
+            Force logout user
+        """
+        if self.user_token is not None:
+            headers = {"Content-Type" : "application/json"}
+            data = {"username": "neil", "password": "neil"}
+            res = requests.post(BASEURL + "projects/logout2", headers=headers, data=json.dumps(data))
+            print('logout2(): SERVER SAYS:', res.text)
+            self.user_token = None
+        else:
+            print("Admin not logged in!")
+        print('')
+
     def adduser(self):
         """
             Add user project database

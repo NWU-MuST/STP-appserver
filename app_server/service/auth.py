@@ -78,7 +78,6 @@ class UserAuth(object):
             db_curs.execute("INSERT INTO tokens (token, username, expiry) VALUES(?,?,?)", (token,
                                                                                            username,
                                                                                            time.time() + self._config["toklife"]))
-            db_conn.commit()
         LOG.info("User login: {}".format(request["username"]))
         return {"token": token}
 
@@ -94,9 +93,35 @@ class UserAuth(object):
                 raise NotAuthorizedError("Token not valid")
             token, username, expiry = entry
             db_curs.execute("DELETE FROM tokens WHERE token=?",  (request["token"],))
-            db_conn.commit()
         LOG.info("User logout: {}".format(username))
         return "User logged out"
+
+    def logout2(self, request):
+        """Validate provided username and password and remove token associated
+           with this user if successful.  We also use this opportunity
+           to clear stale tokens.
+        """
+        with sqlite.connect(self._config["authdb"]) as db_conn:
+            #REMOVE STALE TOKENS
+            db_curs = db_conn.cursor()
+            db_curs.execute("DELETE FROM tokens WHERE ? > expiry", (time.time(),))
+            db_conn.commit()
+            #PROCEED TO AUTHENTICATE USER
+            db_curs.execute("SELECT * FROM users WHERE username=?", (request["username"],))
+            entry = db_curs.fetchone()
+            #User exists?
+            if entry is None:
+                raise NotAuthorizedError("User not registered")
+            else:
+                username, pwhash, salt, name, surname, email = entry
+                #Password correct?
+                if pwhash != bcrypt.hashpw(request["password"], salt):
+                    raise NotAuthorizedError("Wrong password")
+            #logout
+            db_curs.execute("DELETE FROM tokens WHERE username=?", (username,))
+        LOG.info("User logout: {}".format(username))
+        return "User logged out"
+
 
 def test():
     """Informal tests...

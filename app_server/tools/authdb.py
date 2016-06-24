@@ -20,8 +20,17 @@ import bcrypt #Ubuntu/Debian: apt-get install python-bcrypt
 def create_new_db(dbfn):
     db_conn = sqlite.connect(dbfn)
     db_curs = db_conn.cursor()
-    db_curs.execute("CREATE TABLE users ( username VARCHAR(30) PRIMARY KEY, pwhash VARCHAR(60), salt VARCHAR(30), name VARCHAR(30), surname VARCHAR(30), email VARCHAR(50) )")
-    db_curs.execute("CREATE TABLE tokens ( token VARCHAR(20) PRIMARY KEY, username VARCHAR(20), expiry TIMESTAMP)")
+    db_curs.execute("CREATE TABLE users ({})".format(", ".join(["username VARCHAR(30) PRIMARY KEY",
+                                                                "pwhash VARCHAR(60)",
+                                                                "salt VARCHAR(30)",
+                                                                "name VARCHAR(30)",
+                                                                "surname VARCHAR(30)",
+                                                                "email VARCHAR(50)"])))
+    db_curs.execute("CREATE TABLE tokens ({})".format(", ".join(["token VARCHAR(20) PRIMARY KEY",
+                                                                 "username VARCHAR(20)",
+                                                                 "expiry TIMESTAMP"])))
+    db_curs.execute("CREATE TABLE reseturls ({})".format(", ".join(["url VARCHAR(128)",
+                                                                    "username VARCHAR(30)"])))
     db_conn.commit()
     return db_conn
 
