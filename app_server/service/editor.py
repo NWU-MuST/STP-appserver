@@ -46,7 +46,7 @@ def authlog(okaymsg):
                     dict([(k, request[k]) for k in request if k != "file"])), extra=logfuncname)
             try:
                 #AUTH + INSERT USERNAME INTO FUNC SCOPE
-                username = auth.token_auth(request["token"], self._config["authdb"])
+                username = self.authdb.authenticate(request["token"])
                 fn_globals = {}
                 fn_globals.update(globals())
                 fn_globals.update({"username": username})
@@ -77,8 +77,8 @@ class Admin(admin.Admin):
 class Editor(auth.UserAuth):
 
     def __init__(self, config_file, speechserv):
-        with open(config_file) as infh:
-            self._config = json.loads(infh.read())
+        #Provides: self._config and self.authdb
+        auth.UserAuth.__init__(self, config_file)
         self._speech = speechserv
 
         #DB connection setup:

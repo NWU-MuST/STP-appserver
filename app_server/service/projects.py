@@ -85,7 +85,7 @@ class Admin(admin.Admin):
 
 
 class Projects(auth.UserAuth):
-    def __init__(self, config_file):
+    def __init__(self, config_file, speechserv):
         #Provides: self._config and self.authdb
         auth.UserAuth.__init__(self, config_file)
         self._categories = self._config["categories"]
