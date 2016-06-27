@@ -14,8 +14,15 @@ import threading
 import Queue
 import urllib
 import json
+import socket
 
-HOST_NAME = '10.0.0.3' # !!!REMEMBER TO CHANGE THIS!!!
+#Hack to get IP:
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.connect(("gmail.com",80))
+host_ip = s.getsockname()[0]
+s.close()
+
+HOST_NAME = host_ip # !!!REMEMBER TO CHANGE THIS!!!
 PORT_NUMBER = 9950 # Maybe set this to 9000.
 
 Q = Queue.Queue()

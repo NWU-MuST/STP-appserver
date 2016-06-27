@@ -258,10 +258,10 @@ class Project:
         """
         if self.user_token is not None and self.projectid is not None:
             headers = {"Content-Type" : "application/json"}
-            #tasks = [{"editor" : "neil", "collator" : "neil", "start" : 0.0, "end" : 20.0, "language" : "English"},
-            #        {"editor" : "daniel", "collator" : "daniel", "start" : 20.0, "end" : 40.0, "language" : "Afrikaans"},
-            #        {"editor" : "gamer", "collator" : "gamer", "start" : 40.0, "end" : 309.56, "language" : "Zulu"}]
-            tasks = [{"editor" : "neil", "collator" : "neil", "start" : 0.0, "end" : 19.96, "language" : "English"}]
+            tasks = [{"editor" : "neil", "collator" : "neil", "start" : 0.0, "end" : 20.0, "language" : "English"},
+                    {"editor" : "daniel", "collator" : "daniel", "start" : 20.0, "end" : 40.0, "language" : "Afrikaans"},
+                    {"editor" : "gamer", "collator" : "gamer", "start" : 40.0, "end" : 309.56, "language" : "Zulu"}]
+            #tasks = [{"editor" : "neil", "collator" : "neil", "start" : 0.0, "end" : 19.96, "language" : "English"}]
             project = {"projectname": "saved_project"}
             data = {"token": self.user_token, "projectid" : self.projectid, "tasks": tasks, "project": project}
             res = requests.post(BASEURL + "projects/saveproject", headers=headers, data=json.dumps(data))
@@ -354,7 +354,7 @@ class Project:
                                          "FROM incoming "
                                          "WHERE projectid=?", (self.projectid,)).fetchone()
             print("\tSPEECHSERVER GET: ", end="")
-            res = requests.get(BASEURL + outurl, params={})
+            res = requests.get(os.path.join(BASEURL, "projects", outurl), params={})
             print(res.status_code)
             if res.status_code == 200:
                 with open('diarize_tmp.ogg', 'wb') as f:
@@ -363,7 +363,7 @@ class Project:
                 print('SERVER SAYS:', res.text)
             print("\tSPEECHSERVER PUT: ", end="")
             data = {"CTM": "0.0 5.0\n5.0 10.0\n10.0 309.56"}
-            res = requests.put(BASEURL + inurl, headers=headers, data=json.dumps(data))
+            res = requests.put(os.path.join(BASEURL, "projects", inurl), headers=headers, data=json.dumps(data))
             print(res.status_code)
             if res.status_code != 200:
                 print('SERVER SAYS:', res.text)                
