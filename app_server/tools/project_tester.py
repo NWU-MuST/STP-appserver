@@ -24,23 +24,6 @@ class Project:
             self.db = sqlite.connect(projectdbfile)
             self.db.row_factory = sqlite.Row
 
-
-    def login(self):
-        """
-            Login as user
-            Place user 'token' in self.user_token
-        """
-        if self.user_token is None:
-            headers = {"Content-Type" : "application/json"}
-            data = {"username": "neil", "password": "neil"}
-            res = requests.post(BASEURL + "projects/login", headers=headers, data=json.dumps(data))
-            print('login(): SERVER SAYS:', res.text)
-            pkg = res.json()
-            self.user_token = pkg['token']
-        else:
-            print("User logged in already!")
-        print('')
-
     def adminlin(self):
         """
             Login as admin
@@ -72,20 +55,6 @@ class Project:
             print("Admin not logged in!")
         print('')
 
-    def logout(self):
-        """
-            Logout as user
-        """
-        if self.user_token is not None:
-            headers = {"Content-Type" : "application/json"}
-            data = {"token": self.user_token}
-            res = requests.post(BASEURL + "projects/logout", headers=headers, data=json.dumps(data))
-            print('logout(): SERVER SAYS:', res.text)
-            self.user_token = None
-        else:
-            print("Admin not logged in!")
-        print('')
-
     def adduser(self):
         """
             Add user project database
@@ -99,6 +68,76 @@ class Project:
             print(res.status_code)
         else:
             print("Admin not logged in!")
+        print('')
+
+    def login(self):
+        """
+            Login as user
+            Place user 'token' in self.user_token
+        """
+        if self.user_token is None:
+            headers = {"Content-Type" : "application/json"}
+            data = {"username": "neil", "password": "neil"}
+            res = requests.post(BASEURL + "projects/login", headers=headers, data=json.dumps(data))
+            print('login(): SERVER SAYS:', res.text)
+            pkg = res.json()
+            self.user_token = pkg['token']
+        else:
+            print("User logged in already!")
+        print('')
+
+    def logout(self):
+        """
+            Logout as user
+        """
+        if self.user_token is not None:
+            headers = {"Content-Type" : "application/json"}
+            data = {"token": self.user_token}
+            res = requests.post(BASEURL + "projects/logout", headers=headers, data=json.dumps(data))
+            print('logout(): SERVER SAYS:', res.text)
+            self.user_token = None
+        else:
+            print("User not logged in!")
+        print('')
+
+    def changepassword(self):
+        """
+            Logout as user
+        """
+        if self.user_token is not None:
+            headers = {"Content-Type" : "application/json"}
+            data = {"token": self.user_token, "password": "otherpass"}
+            res = requests.post(BASEURL + "projects/changepassword", headers=headers, data=json.dumps(data))
+            print('changepassword(): SERVER SAYS:', res.text)
+        else:
+            print("User not logged in!")
+        print('')
+
+    def changebackpassword(self):
+        """
+            Logout as user
+        """
+        if self.user_token is not None:
+            headers = {"Content-Type" : "application/json"}
+            data = {"token": self.user_token, "password": "neil"}
+            res = requests.post(BASEURL + "projects/changepassword", headers=headers, data=json.dumps(data))
+            print('changebackpassword(): SERVER SAYS:', res.text)
+        else:
+            print("User not logged in!")
+        print('')
+
+    def logout2(self):
+        """
+            Force logout user
+        """
+        if self.user_token is not None:
+            headers = {"Content-Type" : "application/json"}
+            data = {"username": "neil", "password": "neil"}
+            res = requests.post(BASEURL + "projects/logout2", headers=headers, data=json.dumps(data))
+            print('logout2(): SERVER SAYS:', res.text)
+            self.user_token = None
+        else:
+            print("User not logged in!")
         print('')
 
     def listcategories(self):
@@ -366,6 +405,8 @@ if __name__ == "__main__":
                     print("ADDUSER - add new user\n")
                     print("LOGIN - user login")
                     print("LOGOUT - user logout")
+                    print("CHANGEPASSWORD - change user user password")
+                    print("CHANGEBACKPASSWORD - change user user password back")
                     print("LISTCATEGORIES - list project categories")
                     print("CREATEPROJECT - create a new project")
                     print("LISTPROJECTS - list projects")

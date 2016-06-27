@@ -34,9 +34,9 @@ if __name__ == "__main__":
                                                                    "jobid VARCHAR(36)",
                                                                    "errstatus VARCHAR(128)"])))
     db_curs.execute("CREATE TABLE incoming ({})".format(", ".join(["projectid VARCHAR(36) PRIMARY KEY",
-                                                                            "taskid INTEGER",
-                                                                            "url VARCHAR(128)",
-                                                                            "servicetype VARCHAR(128)"])))
+                                                                   "taskid INTEGER",
+                                                                   "url VARCHAR(128)",
+                                                                   "servicetype VARCHAR(128)"])))
     db_curs.execute("CREATE TABLE outgoing ({})".format(", ".join(["projectid VARCHAR(36) PRIMARY KEY",
                                                                    "url VARCHAR(128)",
                                                                    "audiofile VARCHAR(128)",

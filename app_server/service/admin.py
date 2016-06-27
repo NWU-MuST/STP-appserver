@@ -16,28 +16,23 @@ from httperrs import BadRequestError, ConflictError, NotFoundError
 
 LOG = logging.getLogger("APP.ADMIN")
 
-def hashpassw(password):
-    salt = bcrypt.gensalt()
-    pwhash = bcrypt.hashpw(password, salt)
-    return salt, pwhash
-
 class Admin(auth.UserAuth):
     """Implements all functions related to updating user information in
        the auth database.
     """
     def add_user(self, request):
-        auth.token_auth(request["token"], self._config["authdb"])
-        salt, pwhash = hashpassw(request["password"])
+        self.authdb.authenticate(request["token"])
+        salt, pwhash = auth.hash_pw(request["password"])
         try:
             with sqlite.connect(self._config["target_authdb"]) as db_conn:
                 db_curs = db_conn.cursor()
-                db_curs.execute("INSERT INTO users (username, pwhash, salt, name, surname, email) VALUES (?,?,?,?,?,?)", (request["username"],
-                                                                                                                          pwhash,
-                                                                                                                          salt,
-                                                                                                                          request["name"],
-                                                                                                                          request["surname"],
-                                                                                                                          request["email"]))
-                db_conn.commit()
+                db_curs.execute("INSERT INTO users (username, pwhash, salt, name, surname, email, tmppwhash) VALUES (?,?,?,?,?,?,?)", (request["username"],
+                                                                                                                                       pwhash,
+                                                                                                                                       salt,
+                                                                                                                                       request["name"],
+                                                                                                                                       request["surname"],
+                                                                                                                                       request["email"],
+                                                                                                                                       None))
         except sqlite.IntegrityError as e:
             raise ConflictError(e)
         except KeyError as e:
@@ -46,29 +41,27 @@ class Admin(auth.UserAuth):
         return "User added"
 
     def del_user(self, request):
-        auth.token_auth(request["token"], self._config["authdb"])
+        self.authdb.authenticate(request["token"])
         with sqlite.connect(self._config["target_authdb"]) as db_conn:
             db_curs = db_conn.cursor()
             db_curs.execute("DELETE FROM users WHERE username=?", (request["username"],))
-            db_conn.commit()
         LOG.info("Deleted user: {}".format(request["username"]))
         return "User removed"
 
     def get_uinfo(self, request):
-        auth.token_auth(request["token"], self._config["authdb"])
+        self.authdb.authenticate(request["token"])
         with sqlite.connect(self._config["target_authdb"]) as db_conn:
             db_curs = db_conn.cursor()
             db_curs.execute("SELECT * FROM users WHERE username=?", (request["username"],))
             entry = db_curs.fetchone()
             if entry is None:
                 raise NotFoundError("User not registered")
-            else:
-                username, pwhash, salt, name, surname, email = entry
-                LOG.info("Returning info for user: {}".format(request["username"]))
-                return {"name": name, "surname": surname, "email": email}
+            username, pwhash, salt, name, surname, email, tmppwhash = entry
+        LOG.info("Returning info for user: {}".format(request["username"]))
+        return {"name": name, "surname": surname, "email": email}
 
     def update_user(self, request):
-        auth.token_auth(request["token"], self._config["authdb"])
+        self.authdb.authenticate(request["token"])
         with sqlite.connect(self._config["target_authdb"]) as db_conn:
             db_curs = db_conn.cursor()
             #User exists?
@@ -81,20 +74,19 @@ class Admin(auth.UserAuth):
                 if field in request:
                     db_curs.execute("UPDATE users SET {}=? WHERE username=?".format(field), (request[field], request["username"]))
             if "password" in request:
-                salt, pwhash = hashpassw(request["password"])
+                salt, pwhash = auth.hash_pw(request["password"])
                 db_curs.execute("UPDATE users SET pwhash=? WHERE username=?", (pwhash, request["username"]))
                 db_curs.execute("UPDATE users SET salt=? WHERE username=?", (salt, request["username"]))
-            db_conn.commit()
         LOG.info("Updated info for user: {}".format(request["username"]))
         return "User info updated"
 
     def get_users(self, request):
-        auth.token_auth(request["token"], self._config["authdb"])
+        self.authdb.authenticate(request["token"])
         users = dict()
         with sqlite.connect(self._config["target_authdb"]) as db_conn:
             db_curs = db_conn.cursor()
             for entry in db_curs.execute("SELECT * FROM users"):
-                username, pwhash, salt, name, surname, email = entry
+                username, pwhash, salt, name, surname, email, tmppwhash = entry
                 users[username] = {"name": name, "surname": surname, "email": email}
         LOG.info("Returning user list")
         return users
