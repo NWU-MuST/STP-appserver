@@ -1,5 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""TODO:
+     -- This module (and admin.py) needs some cleaning up: refactoring
+        similar to projects.py with ProjectsDB and style of SQLite
+        usage. Currently only authenticate() has been separated out.
+     -- Reset password needs to send user an email.
+"""
 from __future__ import unicode_literals, division, print_function #Py2
 
 import string
@@ -19,37 +25,26 @@ from httperrs import NotAuthorizedError, ConflictError
 
 LOG = logging.getLogger("APP.AUTH")
 
-def gen_pword(length=7):
+def gen_pw(length=7):
     alphabet = string.ascii_letters + string.digits + '!@#$%^&*()'
     return "".join(random.choice(alphabet) for i in range(length))
 
 def gen_token():
     return base64.urlsafe_b64encode(str(uuid.uuid4()))
 
-def token_auth(token, authdb):
-    """Checks whether token is valid/existing in authdb and returns associated
-       username or raises NotAuthorizedError
-    """
-    username = None
-    with sqlite.connect(authdb) as db_conn:
-        db_curs = db_conn.cursor()
-        db_curs.execute("SELECT * FROM tokens WHERE token=?", (token,))
-        entry = db_curs.fetchone()
-        if entry is None:
-            raise NotAuthorizedError
-        else:
-            token, username, expiry = entry
-            if time.time() > expiry:
-                db_curs.execute("DELETE FROM tokens WHERE token=?", (token,)) #remove expired token
-                db_conn.commit()
-                raise NotAuthorizedError
-    return username
+def hash_pw(password):
+    salt = bcrypt.gensalt()
+    pwhash = bcrypt.hashpw(password, salt)
+    return salt, pwhash
 
 class UserAuth(object):
     def __init__(self, config_file=None):
         if config_file is not None:
             with open(config_file) as infh:
                 self._config = json.loads(infh.read())
+            #DB connection setup:
+            self.authdb = sqlite.connect(self._config["authdb"], factory=AuthDB)
+            self.authdb.row_factory = sqlite.Row
 
     def login(self, request):
         """Validate provided username and password and insert new token into
@@ -99,13 +94,9 @@ class UserAuth(object):
         """The DB/service actually logged out of is determined by the service
            as setup in the dispatcher
         """
+        username = self.authdb.authenticate(request["token"])
         with sqlite.connect(self._config["authdb"]) as db_conn:
             db_curs = db_conn.cursor()
-            db_curs.execute("SELECT * FROM tokens WHERE token=?", (request["token"],))
-            entry = db_curs.fetchone()
-            if entry is None:
-                raise NotAuthorizedError("Token not valid")
-            token, username, expiry = entry
             db_curs.execute("DELETE FROM tokens WHERE token=?",  (request["token"],))
         LOG.info("User logout: {}".format(username))
         return "User logged out"
@@ -144,21 +135,17 @@ class UserAuth(object):
     def change_password(self, request):
         """Allows a logged-in user (token) to change the password.
         """
-        raise NotImplementedError
-        # with sqlite.connect(self._config["authdb"]) as db_conn:
-        #     db_curs = db_conn.cursor()
-        #     db_curs.execute("SELECT * FROM tokens WHERE token=?", (request["token"],))
-        #     entry = db_curs.fetchone()
-        #     if entry is None:
-        #         raise NotAuthorizedError("Token not valid")
-        #     token, username, expiry = entry
+        username = self.authdb.authenticate(request["token"])
+        salt, pwhash = hash_pw(request["password"])
+        with self.authdb as authdb:
+            authdb.execute("UPDATE users SET pwhash=?, salt=? WHERE username=?", (pwhash, salt, username))
+        LOG.info("Password updated: {}".format(username))
+        return "Password updated"
 
     def reset_password(self, request):
         """Generates a random new temporary password for one-time use and
            sends this to the registered email address
-
-           DEMIT: May also want to request using email -- but have to
-           ensure unique email fields in Admin.add_user
+           TODO: May also want to request using email
         """
         with sqlite.connect(self._config["authdb"]) as db_conn:
             db_curs = db_conn.cursor()
@@ -171,14 +158,32 @@ class UserAuth(object):
             else:
                 username, pwhash, salt, name, surname, email, tmppwhash = entry
             #Generate random password and insert
-            tmppw = gen_pword()
+            tmppw = gen_pw()
             tmppwhash = bcrypt.hashpw(tmppw, salt)
             db_curs.execute("UPDATE users SET tmppwhash=? WHERE username=?", (tmppwhash, username))
-        #DEMIT: NotImplementedError: At some point email this automatically to the user
+        #TODO: NotImplementedError: At some point email this automatically to the user
         LOG.info("Temp password created: {}".format(username))
         return tmppw
         
-            
+
+class AuthDB(sqlite.Connection):
+    def authenticate(self, token):
+        """Checks whether token is valid/existing in authdb and returns associated
+           username or raises NotAuthorizedError
+        """
+        with self:
+            entry = self.execute("SELECT * FROM tokens WHERE token=?", (token,)).fetchone()
+            if entry is None:
+                raise NotAuthorizedError
+            else:
+                entry = dict(entry)
+                if time.time() > entry["expiry"]:
+                    self.execute("DELETE FROM tokens WHERE token=?", (token,)) #remove expired token
+                    raise NotAuthorizedError
+        return entry["username"]
+
+    ### TODO
+
 
 def test():
     """Informal tests...
@@ -199,6 +204,8 @@ def test():
     a._config = {}
     a._config["authdb"] = "/tmp/test.db"
     a._config["toklife"] = 0
+    a.authdb = sqlite.connect(a._config["authdb"], factory=AuthDB)
+    a.authdb.row_factory = sqlite.Row
     ## 1
     try:
         print(a.login({"username": "testuser", "password": "wrongpass"}))
@@ -209,14 +216,14 @@ def test():
     print("TEST_2 SUCCESS:", "User authenticated with token:", tokenpackage["token"])
     ## 3
     try:
-        username = token_auth(tokenpackage["token"], a._config["authdb"])
+        username = a.authdb.authenticate(tokenpackage["token"])
         print("TEST_3 FAILED:", "Authenticated against expired token")
     except NotAuthorizedError:
         print("TEST_3 SUCCESS:", "Do not authenticate against expired token")
     ## 4
     a._config["toklife"] = 300
     tokenpackage = a.login({"username": "testuser", "password": "testpass"}) #should have been removed from tokens in previous test
-    username = token_auth(tokenpackage["token"], a._config["authdb"])
+    username = a.authdb.authenticate(tokenpackage["token"])
     if username is not None:
         print("TEST_4 SUCCESS:", "Authenticated logged in username:", username)
     else:
@@ -229,10 +236,11 @@ def test():
     ## 6
     a.logout(tokenpackage)
     try:
-        username = token_auth(tokenpackage["token"], a._config["authdb"])
+        username = a.authdb.authenticate(tokenpackage["token"])
         print("TEST_6 FAILED:", "Authenticated against logged out token")
     except NotAuthorizedError:
         print("TEST_6 SUCCESS:", "Do not authenticate against logged out token")
+
 
 if __name__ == "__main__":
     test()

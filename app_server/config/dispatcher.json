@@ -29,6 +29,8 @@
 				   "parameters" : ["token"] },
 	    "/projects/logout2" : { "method" : "service.projects.Projects.logout2",
 				    "parameters" : ["username", "password"] },
+	    "/projects/changepassword" : { "method" : "service.projects.Projects.change_password",
+					  "parameters" : ["token", "password"] },
 	    "/projects/resetpassword" : { "method" : "service.projects.Projects.reset_password",
 					  "parameters" : ["username"] },
 
