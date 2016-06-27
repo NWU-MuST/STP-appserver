@@ -6,17 +6,25 @@ import requests
 import sys
 import json
 import os
+import tempfile
+import logging
+import codecs
 try:
     from sqlite3 import dbapi2 as sqlite
 except ImportError:
     from pysqlite2 import dbapi2 as sqlite #for old Python versions
 
-BASEURL = "http://127.0.0.1:9999/wsgi/"
+################################################################################
+def post(service, data):
+    headers = {"Content-Type" : "application/json"}
+    servpath = os.path.join(BASEURL, service)
+    LOG.debug(servpath)
+    return requests.post(servpath, headers=headers, data=json.dumps(data))    
 
 
-class Project:
-
-    def __init__(self, projectdbfile=None):
+class Test:
+    def __init__(self, testdata, projectdbfile=None):
+        self.__dict__ = testdata
         self.user_token = None
         self.admin_token = None
         self.projectid = None
@@ -24,36 +32,25 @@ class Project:
             self.db = sqlite.connect(projectdbfile)
             self.db.row_factory = sqlite.Row
 
-    def adminlin(self):
-        """
-            Login as admin
-            Place admin 'token' in self.admin_token
-        """
-        if self.admin_token is None:
-            headers = {"Content-Type" : "application/json"}
-            data = {"username": "root", "password": "123456"}
-            res = requests.post(BASEURL + "projects/admin/login", headers=headers, data=json.dumps(data))
-            print('adminlin(): SERVER SAYS:', res.text)
-            print(res.status_code)
-            pkg = res.json()
-            self.admin_token = pkg['token']
-        else:
-            print("Admin logged in already!")
-        print('')
-
-    def adminlout(self):
-        """
-            Logout as admin
-        """
-        if self.admin_token is not None:
-            headers = {"Content-Type" : "application/json"}
-            data = {"token": self.admin_token}
-            res = requests.post(BASEURL + "projects/admin/logout", headers=headers, data=json.dumps(data))
-            print('adminlout(): SERVER SAYS:', res.text)
-            self.admin_token = None
-        else:
-            print("Admin not logged in!")
-        print('')
+    def adminlin(self, username=None, password=None):
+        LOG.debug("Entering...")
+        data = {"username": username or self.auser,
+                "password": password or self.apassw}
+        result = post("admin/login", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code == 200:
+            pkg = result.json()
+            self.atoken = pkg["token"]
+            
+    def adminlout(self, token=None):
+        LOG.debug("Entering...")
+        data = {"token": token or self.atoken}
+        result = post("admin/logout", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code == 200:
+            self.atoken = None
 
     def adduser(self):
         """
@@ -387,98 +384,126 @@ class Project:
 
 
 if __name__ == "__main__":
-    print('Accessing Docker app server via: http://127.0.0.1:9999/wsgi/')
-    proj = Project(projectdbfile=sys.argv[1])
+    logfile, loglevel, testfile, projectdbfile = sys.argv[1:]
+    with codecs.open(testfile, encoding="utf-8") as testfh:
+        testdata = json.load(testfh)
 
-    if len(sys.argv) < 3:
-        try:
-            while True:
-                cmd = raw_input("Enter command (type help for list)> ")
-                cmd = cmd.lower()
-                if cmd == "exit":
-                    proj.logout()
-                    proj.adminlout()
-                    break
-                elif cmd in ["help", "list"]:
-                    print("ADMINLIN - Admin login")
-                    print("ADMINLOUT - Admin logout")
-                    print("ADDUSER - add new user\n")
-                    print("LOGIN - user login")
-                    print("LOGOUT - user logout")
-                    print("CHANGEPASSWORD - change user user password")
-                    print("CHANGEBACKPASSWORD - change user user password back")
-                    print("LISTCATEGORIES - list project categories")
-                    print("CREATEPROJECT - create a new project")
-                    print("LISTPROJECTS - list projects")
-                    print("LOADPROJECT - load projects")
-                    print("UPLOADAUDIO - upload audio to project")
-                    print("GETAUDIO - retrieve project audio")
-                    print("SAVEPROJECT - save tasks to a project")
-                    print("ASSIGNTASKS - assign tasks to editors")
-                    print("DIARIZEAUDIO - save tasks to a project via diarize request (simulate speech server)\n")
-                    print("DIARIZEAUDIO2 - like DIARIZEAUDIO but withouth speech server (project stays locked)\n")
-                    print("UNLOCKPROJECT - unlock project (can test this against DIARIZEAUDIO2)")
-                    print("EXIT - quit")
+    ################################################################################
+    ### LOGGING SETUP
+    BASEURL = "http://127.0.0.1:9999/wsgi/projects"
+    LOGNAME = "PTESTER"
+    try:
+        fmt = "%(asctime)s [%(levelname)s] %(name)s on tid:{} in %(funcName)s(): %(message)s".format(testdata["testid"])
+        LOG = logging.getLogger(LOGNAME)
+        formatter = logging.Formatter(fmt)
+        ofstream = logging.FileHandler(logfile, encoding="utf-8")
+        ofstream.setFormatter(formatter)
+        LOG.addHandler(ofstream)
+        LOG.setLevel(int(loglevel))
+        #If we want console output:
+        console = logging.StreamHandler()
+        console.setFormatter(formatter)
+        LOG.addHandler(console)
+    except Exception as e:
+        print("FATAL ERROR: Could not create logging instance: {}".format(e), file=sys.stderr)
+        sys.exit(1)
 
-                else:
-                    try:
-                        meth = getattr(proj, cmd)
-                        meth()
-                    except Exception as e:
-                        print('Error processing command:', e)
+    test = Test(testdata, projectdbfile)
+    test.adminlin()
+    test.adminlout()
 
-        except:
-            proj.logout()
-            proj.adminlout()
-            print('')
-    else:
-        if sys.argv[2].upper() == "ASSIGN":
-            proj.login()
-            proj.createproject()
-            proj.uploadaudio()
-            proj.saveproject()
-            proj.assigntasks()
-            proj.logout()
-        elif sys.argv[2].upper() == "ASSIGN_NOTASKS":
-            proj.login()
-            proj.createproject()
-            proj.uploadaudio()
-            proj.assigntasks()
-            proj.logout()
-        elif sys.argv[2].upper() == "DIARIZE_ASSIGN":
-            proj.login()
-            proj.createproject()
-            proj.uploadaudio()
-            proj.diarizeaudio()
-            proj.saveproject()
-            proj.assigntasks()
-            proj.logout()
-        elif sys.argv[2].upper() == "DIARIZE_ASSIGN_UPDATE":
-            proj.login()
-            proj.createproject()
-            proj.uploadaudio()
-            proj.diarizeaudio()
-            proj.saveproject()
-            proj.assigntasks()
-            proj.updateproject()
-            proj.logout()
-        elif sys.argv[2].upper() == "DIARIZE_ASSIGN_DELETE":
-            proj.login()
-            proj.createproject()
-            proj.uploadaudio()
-            proj.diarizeaudio()
-            proj.saveproject()
-            proj.assigntasks()
-            proj.deleteproject()
-            proj.logout()
-        elif sys.argv[2].upper() == "DIARIZE_DELETE":
-            proj.login()
-            proj.createproject()
-            proj.uploadaudio()
-            proj.diarizeaudio()
-            proj.saveproject()
-            proj.deleteproject()
-            proj.logout()
-        else:
-            print("UNKNOWN TASK: {}".format(sys.argv[2]))
+    # print('Accessing Docker app server via: http://127.0.0.1:9999/wsgi/')
+    # proj = Project(projectdbfile=sys.argv[1])
+
+    # if len(sys.argv) < 3:
+    #     try:
+    #         while True:
+    #             cmd = raw_input("Enter command (type help for list)> ")
+    #             cmd = cmd.lower()
+    #             if cmd == "exit":
+    #                 proj.logout()
+    #                 proj.adminlout()
+    #                 break
+    #             elif cmd in ["help", "list"]:
+    #                 print("ADMINLIN - Admin login")
+    #                 print("ADMINLOUT - Admin logout")
+    #                 print("ADDUSER - add new user\n")
+    #                 print("LOGIN - user login")
+    #                 print("LOGOUT - user logout")
+    #                 print("CHANGEPASSWORD - change user user password")
+    #                 print("CHANGEBACKPASSWORD - change user user password back")
+    #                 print("LISTCATEGORIES - list project categories")
+    #                 print("CREATEPROJECT - create a new project")
+    #                 print("LISTPROJECTS - list projects")
+    #                 print("LOADPROJECT - load projects")
+    #                 print("UPLOADAUDIO - upload audio to project")
+    #                 print("GETAUDIO - retrieve project audio")
+    #                 print("SAVEPROJECT - save tasks to a project")
+    #                 print("ASSIGNTASKS - assign tasks to editors")
+    #                 print("DIARIZEAUDIO - save tasks to a project via diarize request (simulate speech server)\n")
+    #                 print("DIARIZEAUDIO2 - like DIARIZEAUDIO but withouth speech server (project stays locked)\n")
+    #                 print("UNLOCKPROJECT - unlock project (can test this against DIARIZEAUDIO2)")
+    #                 print("EXIT - quit")
+
+    #             else:
+    #                 try:
+    #                     meth = getattr(proj, cmd)
+    #                     meth()
+    #                 except Exception as e:
+    #                     print('Error processing command:', e)
+
+    #     except:
+    #         proj.logout()
+    #         proj.adminlout()
+    #         print('')
+    # else:
+    #     if sys.argv[2].upper() == "ASSIGN":
+    #         proj.login()
+    #         proj.createproject()
+    #         proj.uploadaudio()
+    #         proj.saveproject()
+    #         proj.assigntasks()
+    #         proj.logout()
+    #     elif sys.argv[2].upper() == "ASSIGN_NOTASKS":
+    #         proj.login()
+    #         proj.createproject()
+    #         proj.uploadaudio()
+    #         proj.assigntasks()
+    #         proj.logout()
+    #     elif sys.argv[2].upper() == "DIARIZE_ASSIGN":
+    #         proj.login()
+    #         proj.createproject()
+    #         proj.uploadaudio()
+    #         proj.diarizeaudio()
+    #         proj.saveproject()
+    #         proj.assigntasks()
+    #         proj.logout()
+    #     elif sys.argv[2].upper() == "DIARIZE_ASSIGN_UPDATE":
+    #         proj.login()
+    #         proj.createproject()
+    #         proj.uploadaudio()
+    #         proj.diarizeaudio()
+    #         proj.saveproject()
+    #         proj.assigntasks()
+    #         proj.updateproject()
+    #         proj.logout()
+    #     elif sys.argv[2].upper() == "DIARIZE_ASSIGN_DELETE":
+    #         proj.login()
+    #         proj.createproject()
+    #         proj.uploadaudio()
+    #         proj.diarizeaudio()
+    #         proj.saveproject()
+    #         proj.assigntasks()
+    #         proj.deleteproject()
+    #         proj.logout()
+    #     elif sys.argv[2].upper() == "DIARIZE_DELETE":
+    #         proj.login()
+    #         proj.createproject()
+    #         proj.uploadaudio()
+    #         proj.diarizeaudio()
+    #         proj.saveproject()
+    #         proj.deleteproject()
+    #         proj.logout()
+    #     else:
+    #         print("UNKNOWN TASK: {}".format(sys.argv[2]))
 

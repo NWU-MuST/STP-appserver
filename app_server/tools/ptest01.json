@@ -1,0 +1,16 @@
+{
+    "testid": 1,
+
+    "auser": "root",
+    "apassw": "123456",
+    "atoken": null,
+
+    "user": "neil",
+    "passw": "neil",
+    "passw_": "neil2",
+    "token": null,
+
+    "audiofile": "/home/demitasse/workspace/stp_dockerbuild/stp/app_server/tools/tallship.ogg",
+    "audiodur": 5.154830,
+    "pid": null
+}
