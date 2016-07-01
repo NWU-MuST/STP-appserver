@@ -150,8 +150,9 @@ class Projects(auth.UserAuth):
             db.delete_project(request["projectid"])
         #Remove any files associated with project
         if row:
-            projectpath = os.path.dirname(row["audiofile"])
-        shutil.rmtree(projectpath, ignore_errors=True)
+            if row["audiofile"]:
+                projectpath = os.path.dirname(row["audiofile"])
+                shutil.rmtree(projectpath, ignore_errors=True)
         return "Project deleted!"
 
     @authlog("Returning loaded project")
