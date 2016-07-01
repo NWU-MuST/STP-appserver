@@ -4,6 +4,7 @@ from __future__ import unicode_literals, division, print_function #Py2
 
 import time
 import BaseHTTPServer
+import SocketServer
 import json
 import uuid
 import base64
@@ -16,44 +17,50 @@ import urllib
 import json
 
 HOST_NAME = '10.0.0.3' # !!!REMEMBER TO CHANGE THIS!!!
-PORT_NUMBER = 9950 # Maybe set this to 9000.
+PORT_NUMBER = 9950
 
 Q = Queue.Queue()
 
+# Process speech requests
 class dHandle(threading.Thread):
 
-    def __init__(self, q):
+    def __init__(self, q, number):
         threading.Thread.__init__ (self)
         self.q = q
         self.running = True
+        self.no = number
 
     def run(self):
         while self.running:
             if not self.q.empty():
                 job = self.q.get()
-                print("Processing job:", "{}".format(job))
+                print("Thread-{} - Processing job: {}".format(self.no, job))
                 job = json.loads(job)
 
-                print('Fetching: %s -> %s' % (job["getaudio"], "tmp.tmp.tmp"))
-                urllib.urlretrieve(job["getaudio"], "tmp.tmp.tmp")
-                print(os.path.getsize("tmp.tmp.tmp"))
+                print('Thread-%s - Fetching: %s -> %s' % (self.no, job["getaudio"], "tmp.tmp.tmp.%s" % self.no))
+                urllib.urlretrieve(job["getaudio"], "tmp.tmp.tmp.%s" % self.no)
+                print(os.path.getsize("tmp.tmp.tmp.%s" % self.no))
                 time.sleep(1)
 
-                print('Uploading result to: %s' % (job["putresult"]))
+                print('Thread-%s Uploading result to: %s' % (self.no, job["putresult"]))
                 pkg = json.dumps({"CTM" : "0.0\t1.0\tSIL\n1.0\t20.0\tSPK\n"})
                 headers = {"Content-Type" : "application/json", "Content-Length" : str(len(pkg))}
                 response = requests.put(job["putresult"], headers=headers, data=pkg)
                 print(response.status_code, response.text)
-                os.remove("tmp.tmp.tmp")
+                os.remove("tmp.tmp.tmp.%s" % self.no)
 
                 self.q.task_done()
             else:
-                time.sleep(1)
+                time.sleep(0.02)
 
     def stop(self):
         self.running = False
 
+# Thread the HTTP server
+class ThreadedHTTPServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
+    """Handle requests in a separate thread."""
 
+# Handle HTTP requests
 class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_POST(s):
         """Respond to a GET request."""
@@ -81,11 +88,15 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
 
 if __name__ == '__main__':
-    server_class = BaseHTTPServer.HTTPServer
+    #server_class = BaseHTTPServer.HTTPServer
+    server_class = ThreadedHTTPServer
     httpd = server_class((HOST_NAME, PORT_NUMBER), MyHandler)
 
-    dH = dHandle(Q)
-    dH.start()
+    # Create workers
+    dH = []
+    for n in range(10):
+        dH.append(dHandle(Q, n))
+        dH[n].start()
 
     print(time.asctime(), "Server Starts - %s:%s" % (HOST_NAME, PORT_NUMBER))
     try:
@@ -93,8 +104,10 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         pass
 
-    dH.stop()
-    dH.join()
+    # Teardown
+    for n in range(10):
+        dH[n].stop()
+        dH[n].join()
 
     httpd.server_close()
     print(time.asctime(), "Server Stops - %s:%s" % (HOST_NAME, PORT_NUMBER))

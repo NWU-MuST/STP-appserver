@@ -156,7 +156,14 @@ class Dispatch:
         module_config = self._module_config[module_name]
         module_hook = self._modules[module_name]
 
-        module = module_hook(module_config, self._speech)
+        try:
+            module = module_hook(module_config, self._speech)
+        except:
+            try:
+                module = module_hook(module_config)
+            except:
+                raise
+
         method = getattr(module, self._routing['POST'][uri]['method'])
 
         dispatch_result = dict()

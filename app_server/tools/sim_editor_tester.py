@@ -12,6 +12,8 @@ import random
 import math
 import logging
 import logging.handlers
+import threading
+import time
 
 BASEURL = "http://127.0.0.1:9999/wsgi/"
 
@@ -247,12 +249,15 @@ class Project:
 
 class Editor:
 
-    def __init__(self):
-        self.user_token = None
-        self.admin_token = None
+    def __init__(self, user):
         self.this_task = None
+        self.user = user
         self.users = {}
         self.username = None
+        self.user_token = None
+        self.admin_token = None
+        self.taskid = None
+        self.projectid = None
 
     def gen_users(self, user_number=20):
         LOG.info("Generating {} users".format(user_number))
@@ -267,353 +272,320 @@ class Editor:
 
         return self.users
 
-    def login(self, user):
+    def login(self):
         """
             Login as user
             Place user 'token' in self.user_token
         """
-        if user not in self.users:
-            LOG.error("{} not in user list".format(user))
-            return
-
-        if self.user_token is None:
+        user = self.user
+        try:
             LOG.info("username={}: {} logging in".format(self.users[user]["username"], user))
             headers = {"Content-Type" : "application/json"}
             data = {"username": self.users[user]["username"], "password": self.users[user]["password"]}
             res = requests.post(BASEURL + "editor/login", headers=headers, data=json.dumps(data))
-            print('login(): SERVER SAYS:', res.text)
-            LOG.info('username={}: login(): SERVER SAYS:'.format(self.users[user]["username"]), res.text)
+            LOG.info('username={}: login(): SERVER SAYS: {}'.format(self.users[user]["username"], res.text))
             pkg = res.json()
-            self.user_token = pkg['token']
-            self.username = self.users[user]["username"]
-        else:
-            print("User logged in already!")
-            LOG.error("username={}: login(): User logged in already!")
-        print('')
+            self.user_token = pkg["token"]
+            self.username = user
+            return res.status_code, pkg['token']
+        except Exception as e:
+            LOG.error("username={}: login(): {}!".format(user, str(e)))
+            return 500, None
 
     def adminlin(self):
         """
             Login as admin
             Place admin 'token' in self.admin_token
         """
-        if self.admin_token is None:
+        try:
             headers = {"Content-Type" : "application/json"}
             data = {"username": "root", "password": "123456"}
             res = requests.post(BASEURL + "editor/admin/login", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
-            print(res.status_code)
             pkg = res.json()
             self.admin_token = pkg['token']
-        else:
-            print("Admin logged in already!")
-        print('')
+            return res.status_code, pkg["token"]
+        except Exception as e:
+            LOG.error("username={}: adminlin(): {}!".format("root", str(e)))
+            return 500, None
 
     def adminlout(self):
         """
             Logout as admin
         """
-        if self.admin_token is not None:
+        try:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.admin_token}
             res = requests.post(BASEURL + "editor/admin/logout", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
             self.admin_token = None
-        else:
-            print("Admin not logged in!")
-        print('')
+            return res.status_code, None
+        except Exception as e:
+            LOG.error("username={}: adminlout(): {}!".format("root", str(e)))
+            return 500, None
 
     def logout(self):
         """
             Logout as user
         """
-        LOG.info("username={}: logout(): Entering".format(self.username))
-        if self.user_token is not None:
+        try:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.user_token}
             res = requests.post(BASEURL + "editor/logout", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
-            LOG.info("username={}: logout(): SERVER SAYS:".format(self.username), res.text)
-            self.user_token = None
-        else:
-            print("User not logged in!")
-            LOG.error("username={}: logout(): User not logged in!".format(self.username))
-        print('')
+            LOG.info("username={}: logout(): SERVER SAYS:".format(self.username, res.text))
+            return res.status_code, None
+        except Exception as e:
+            LOG.error("username={}: logout(): {}!".format(user, str(e)))
+            return 500, None
 
     def adduser(self, user):
         """
             Add automatically generated users to database
         """
-        if user not in self.users.keys():
-            LOG.error("{} not in user list".format(user))
-            return
+        try:
+            if user not in self.users.keys():
+                LOG.error("{} not in user list".format(user))
+                return 500, None
 
-        if self.admin_token is not None:
-            LOG.info("Adding user {}".format(user))
-            headers = {"Content-Type" : "application/json"}
-            data = {"token": self.admin_token, "username": self.users[user]["username"], "password": self.users[user]["password"],
-             "name": self.users[user]["name"], "surname": self.users[user]["surname"], "email": self.users[user]["email"]}
-            res = requests.post(BASEURL + "editor/admin/adduser", headers=headers, data=json.dumps(data))
-            print('adduser(): SERVER SAYS:', res.text)
-            print(res.status_code)
-        else:
-            print("Admin not logged in!")
-        print('')
+            if self.admin_token is not None:
+                LOG.info("Adding user {}".format(user))
+                headers = {"Content-Type" : "application/json"}
+                data = {"token": self.admin_token, "username": self.users[user]["username"], "password": self.users[user]["password"],
+                 "name": self.users[user]["name"], "surname": self.users[user]["surname"], "email": self.users[user]["email"]}
+                res = requests.post(BASEURL + "editor/admin/adduser", headers=headers, data=json.dumps(data))
+                LOG.info("username={}: adduser(): SERVER SAYS:".format("root", res.text))
+                return res.status_code, res.text
+        except Exception as e:
+            LOG.error("username={}: adduser(): {}!".format("root", str(e)))
+            return 500, None
 
     def loadtasks(self):
         """
             Load all tasks belonging to neil
         """
-        LOG.info("username={}: loadtasks(): Entering".format(self.username))
-        if self.user_token is not None:
+        try:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.user_token}
             res = requests.post(BASEURL + "editor/loadtasks", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
-            print(res.status_code)
             pkg = res.json()
             if len(pkg['CANOPEN']) > 0:
                 self.this_task = random.choice(pkg['CANOPEN'])
                 self.taskid = self.this_task['taskid']
                 self.projectid = self.this_task['projectid']
-                print(self.taskid, self.projectid)
-                LOG.info("username={}: loadtasks(): Taskid & Projectid".format(self.username), self.taskid, self.projectid)
+                LOG.info("username={}: loadtasks(): Taskid={} & Projectid={}".format(self.username, self.taskid, self.projectid))
+                return res.status_code, "{} {}".format(self.taskid, self.projectid)
             else:
                 print('No tasks to select')
                 LOG.info("username={}: loadtasks(): No tasks to select!".format(self.username))
-        else:
-            print("User not logged in!")
-            LOG.error("username={}: loadtasks(): User not logged in!".format(self.username))
-        print('')
+                return 500, None
+        except Exception as e:
+            LOG.error("username={}: loadtasks(): {}!".format(self.username, str(e)))
+            return 500, None
 
     def getaudio(self):
         """
             Return a portion of audio for the task
         """
-        LOG.info("username={}: getaudio(): Entering".format(self.username))
-        if self.user_token is not None and self.projectid is not None:
+        try:
             params = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid}
             res = requests.get(BASEURL + "editor/getaudio", params=params)
-            print(res.status_code)
             if res.status_code == 200:
                 with open('taskrange.ogg', 'wb') as f:
                     f.write(res.content)
                 LOG.info("username={}: getaudio(): Save audio to taskrange.ogg".format(self.username))
+                return res.status_code, "Saved audio"
             else:
-                print('SERVER SAYS:', res.text)
-                LOG.error("username={}: getaudio(): ".format(self.username), res.text)
-        else:
-            print("User not logged in!")
-            LOG.error("username={}: getaudio(): User not logged in!".format(self.username))
-        print('')
+                LOG.error("username={}: getaudio(): {}".format(self.username, res.text))
+                return res.status_code, res.text
+        except Exception as e:
+            LOG.error("username={}: getaudio(): {}!".format(self.username, str(e)))
+            return 500, None
 
     def savetext(self):
         """
             Save text to task text file
         """
-        LOG.info("username={}: savetext(): Entering".format(self.username))
-        if self.user_token is not None and self.projectid is not None:
+        try:
             headers = {"Content-Type" : "application/json"}
             data = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid, "text" : "Hello world!"}
             res = requests.post(BASEURL + "editor/savetext", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
-            LOG.info("username={}: savetext(): ".format(self.username), res.text)
-            print(res.status_code)
-        else:
-            print("User not logged in!")
-            LOG.error("username={}: savetext(): User not logged in!".format(self.username))
-        print('')
+            LOG.info("username={}: savetext(): {}".format(self.username, res.text))
+            return res.status_code, res.text
+        except Exception as e:
+            LOG.error("username={}: savetext(): {}!".format(self.username, str(e)))
+            return 500, None
 
     def cleartext(self):
         """
             Remove text from file
         """
-        LOG.info("username={}: cleartext(): Entering".format(self.username))
-        if self.user_token is not None and self.projectid is not None:
+        try:
             headers = {"Content-Type" : "application/json"}
             data = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid, "text" : ""}
             res = requests.post(BASEURL + "editor/savetext", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
-            LOG.info("username={}: cleartext(): ".format(self.username), res.text)
-            print(res.status_code)
-        else:
-            print("User not logged in!")
-            LOG.error("username={}: cleartext(): User not logged in!".format(self.username))
-        print('')
+            LOG.info("username={}: cleartext(): {}".format(self.username, res.text))
+            return res.status_code, res.text
+        except Exception as e:
+            LOG.error("username={}: cleartext(): {}!".format(self.username, str(e)))
+            return 500, None
 
     def gettext(self):
         """
             Return the task's text
         """
-        LOG.info("username={}: gettext(): Entering".format(self.username))
-        if self.user_token is not None and self.projectid is not None:
+        try:
             headers = {"Content-Type" : "application/json"}
             data = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid}
             res = requests.post(BASEURL + "editor/gettext", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
-            LOG.info("username={}: gettext(): ".format(self.username), res.text)
-            print(res.status_code)
-            pkg = res.json()
-            print('TEXT', pkg['text'])
-        else:
-            print("User not logged in!")
-            LOG.error("username={}: gettext(): User not logged in!".format(self.username))
-        print('')
+            LOG.info("username={}: gettext(): {}".format(self.username, res.text))
+            return res.status_code, res.text
+        except Exception as e:
+            LOG.error("username={}: gettext(): {}!".format(self.username, str(e)))
+            return 500, None
 
     def taskdone(self):
         """
             Assign the task to collator
         """
-        LOG.info("username={}: taskdone(): Entering".format(self.username))
-        if self.user_token is not None and self.projectid is not None:
+        try:
             headers = {"Content-Type" : "application/json"}
             data = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid}
             res = requests.post(BASEURL + "editor/taskdone", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
-            LOG.info("username={}: taskdone(): ".format(self.username), res.text)
-            print(res.status_code)
-        else:
-            print("User not logged in!")
-            LOG.error("username={}: taskdone(): User not logged in!".format(self.username))
-        print('')
+            LOG.info("username={}: taskdone(): {}".format(self.username, res.text))
+            return res.status_code, res.text
+        except Exception as e:
+            LOG.error("username={}: taskdone(): {}!".format(self.username, str(e)))
+            return 500, None
 
     def unlocktask(self):
         """
             Cancel a scheduled job
         """
-        LOG.info("username={}: unlocktask(): Entering".format(self.username))
-        if self.user_token is not None and self.projectid is not None:
+        try:
             headers = {"Content-Type" : "application/json"}
             data = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid}
             res = requests.post(BASEURL + "editor/unlocktask", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
-            LOG.info("username={}: unlocktask(): ".format(self.username), res.text)
-            print(res.status_code)
-        else:
-            print("User not logged in!")
-            LOG.error("username={}: unlocktask(): User not logged in!".format(self.username))
-        print('')
+            LOG.info("username={}: unlocktask(): {}".format(self.username, res.text))
+            return res.status_code, res.text
+        except Exception as e:
+            LOG.error("username={}: unlocktask(): {}!".format(self.username, str(e)))
+            return 500, None
 
     def diarize(self):
         """
             Submit a diarize speech job
         """
-        LOG.info("username={}: diarize(): Entering".format(self.username))
-        if self.user_token is not None and self.projectid is not None:
+        try:
             headers = {"Content-Type" : "application/json"}
             data = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid}
             res = requests.post(BASEURL + "editor/diarize", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
-            LOG.info("username={}: diarize(): ".format(self.username), res.text)
-            print(res.status_code)
-        else:
-            print("User not logged in!")
-            LOG.error("username={}: diarize(): User not logged in!".format(self.username))
-        print('')
+            LOG.info("username={}: diarize(): {}".format(self.username, res.text))
+            return res.status_code, res.text
+        except Exception as e:
+            LOG.error("username={}: diarize(): {}!".format(self.username, str(e)))
+            return 500, None
 
     def recognize(self):
         """
             Submit a recognize speech job
         """
-        LOG.info("username={}: recognize(): Entering".format(self.username))
-        if self.user_token is not None and self.projectid is not None:
+        try:
             headers = {"Content-Type" : "application/json"}
             data = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid}
             res = requests.post(BASEURL + "editor/recognize", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
-            LOG.info("username={}: recognize(): ".format(self.username), res.text)
-            print(res.status_code)
-        else:
-            print("User not logged in!")
-            LOG.error("username={}: recognize(): User not logged in!".format(self.username))
-        print('')
+            LOG.info("username={}: recognize(): {}".format(self.username, res.text))
+            return res.status_code, res.text
+        except Exception as e:
+            LOG.error("username={}: recognize(): {}!".format(self.username, str(e)))
+            return 500, None
 
     def align(self):
         """
             Submit a align speech job
         """
-        LOG.info("username={}: align(): Entering".format(self.username))
-        if self.user_token is not None and self.projectid is not None:
+        try:
             headers = {"Content-Type" : "application/json"}
             data = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid}
             res = requests.post(BASEURL + "editor/align", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
-            LOG.info("username={}: align(): ".format(self.username), res.text)
-            print(res.status_code)
-        else:
-            print("User not logged in!")
-            LOG.error("username={}: align(): User not logged in!".format(self.username))
-        print('')
-
+            LOG.info("username={}: align(): {}".format(self.username, res.text))
+            return res.status_code, res.text
+        except Exception as e:
+            LOG.error("username={}: align(): {}!".format(self.username, str(e)))
+            return 500, None
 
     def clearerror(self):
         """
             Clear error status
         """
-        LOG.info("username={}: clearerror(): Entering".format(self.username))
-        if self.user_token is not None and self.projectid is not None:
+        try:
             headers = {"Content-Type" : "application/json"}
             data = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid}
             res = requests.post(BASEURL + "editor/clearerror", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
-            LOG.info("username={}: clearerror(): ".format(self.username), res.text)
-            print(res.status_code)
-            pkg = res.json()
-        else:
-            print("User not logged in!")
-            LOG.error("username={}: clearerror(): User not logged in!".format(self.username))
-        print('')
+            LOG.info("username={}: clearerror(): {}".format(self.username, res.text))
+            return res.status_code, res.text
+        except Exception as e:
+            LOG.error("username={}: clearerror(): {}!".format(self.username, str(e)))
+            return 500, None
+
+    def error(self):
+        return 200, None
 
 
+class Worker(threading.Thread):
+
+    def __init__(self, paths, user, number):
+        threading.Thread.__init__(self)
+        self.paths = paths
+        self.user = user
+        self.running = True
+        self.editor = Editor(user)
+        self.editor.gen_users()
+        self.thread_number = number
+
+    def run(self):
+        state = "login"
+        while self.running:
+            LOG.info("user={} thread#={} state={}".format(self.user, self.thread_number, state))
+
+            meth = getattr(self.editor, state)
+            res, text = meth()
+            LOG.info("user={} thread#={} state={} res={} text={}".format(self.user, self.thread_number, state, res, text))
+            if res == 200:
+                state = random.choice(self.paths[state])
+            else:
+                state = "error"
+
+            rand_sleep = random.uniform(0.2,0.25)
+            LOG.info("user={} thread#={} state={} waiting {}".format(self.user, self.thread_number, state, rand_sleep))
+            time.sleep(rand_sleep)
+
+        self.editor.logout()
+
+    def stop(self):
+        self.running = False
 
 
 if __name__ == "__main__":
     print('Accessing Docker app server via: {}'.format(BASEURL))
 
     proj = Project()
-    edit = Editor()
+    edit = Editor(None)
 
-    if len(sys.argv) < 2:
-        try:
-            while True:
-                cmd = raw_input("Enter command (type help for list)> ")
-                cmd = cmd.lower()
-                if cmd == "exit":
-                    edit.logout()
-                    edit.adminlout()
-                    break
-                elif cmd in ["help", "list"]:
-                    print("ADMINLIN - Admin login")
-                    print("ADMINLOUT - Admin logout")
-                    print("ADDUSER - add new user\n")
-                    print("LOGIN - user login")
-                    print("LOGOUT - user logout\n")
-                    print("LOADTASKS - load tasks belonging to user")
-                    print("GETAUDIO - return task audio")
-                    print("GETTEXT - return task text")
-                    print("SAVETEXT - save text to file")
-                    print("CLEARTEXT - remove text from file")
-                    print("TASKDONE - set the task is done")
-                    print("UNLOCKTASK - cancel a speech job")
-                    print("CLEARERROR - remove task error status")
-                    print("DIARIZE - submit diarize job")
-                    print("RECOGNIZE - submit recognize job")
-                    print("ALIGN - submit align job")
-                    print("EXIT - quit")
-                else:
-                    try:
-                        meth = getattr(edit, cmd)
-                        meth()
-                    except Exception as e:
-                        print('Error processing command:', e)
+    # Not including taskdone as this will reduce the number of tasks one by one
+    Paths = {"login" : ["loadtasks" ],
+             "loadtasks" : ["gettext", "getaudio", "savetext", "cleartext"],
+             "savetext" : ["recognize", "align", "savetext"],
+            "gettext" : ["gettext", "getaudio", "savetext", "cleartext"],
+            "getaudio" : ["gettext", "getaudio", "savetext", "cleartext"],
+            "unlocktask" : ["loadtasks"],
+            "clearerror" : ["unlocktask", "logout"],
+            "cleartext" : ["diarize"],
+            "diarize" : ["unlocktask", "align", "recognize", "savetext", "cleartext"],
+            "recognize" : ["unlocktask", "align", "recognize", "savetext", "cleartext"],
+            "align" : ["unlocktask", "recognize", "savetext", "cleartext"],
+            "logout" : ["login"],
+            "error" : ["clearerror"]
+    }
 
-        except:
-            proj.logout()
-            proj.adminlout()
-            edit.logout()
-            edit.adminlout()
-            print('')
-
-    elif len(sys.argv) == 2:
+    if len(sys.argv) == 2:
         if sys.argv[1].upper() == "P_ADDUSERS":
             users = proj.gen_users()
             proj.adminlin()
@@ -623,13 +595,14 @@ if __name__ == "__main__":
 
         elif sys.argv[1].upper() == "ADDPROJECT":
             users = proj.gen_users()
-            usr = random.choice(users.keys())
-            proj.login(usr)
-            proj.createproject()
-            proj.uploadaudio()
-            proj.saveproject()
-            proj.assigntasks()
-            proj.logout()
+            for usr in users.keys():
+                print(usr)
+                proj.login(usr)
+                proj.createproject()
+                proj.uploadaudio()
+                proj.saveproject()
+                proj.assigntasks()
+                proj.logout()
 
         elif sys.argv[1].upper() == "E_ADDUSERS":
             users = edit.gen_users()
@@ -638,68 +611,27 @@ if __name__ == "__main__":
                 usr = edit.adduser(usr)
             edit.adminlout()
 
-        else:
-            print("UNKNOWN TASK: {}".format(sys.argv))
+        elif sys.argv[1].upper() == "SIMULATE":
+            Pool = []
+            users = edit.gen_users(10)
+            for n, usr in enumerate(users.keys()):
+                work = Worker(Paths, usr, n)
+                work.start()
+                Pool.append(work)
 
-    elif len(sys.argv) == 3:
-        users = edit.gen_users()
-        if sys.argv[2] not in users:
-            print("User {} not found".format(sys.argv[2]))
-            sys.exit(1)
+            try:
+                while True:
+                    time.sleep(1)
+            except:
+                pass
 
-        if sys.argv[1].upper() == "SAVETEXT":
-            edit.login(sys.argv[2])
-            edit.loadtasks()
-            edit.savetext()
-            edit.logout()
-
-        elif sys.argv[1].upper() == "CLEARERROR":
-            edit.login(sys.argv[2])
-            edit.clearerror()
-            edit.logout()
-
-        elif sys.argv[1].upper() == "UNLOCKTASK":
-            edit.login(sys.argv[2])
-            edit.loadtasks()
-            edit.unlocktask()
-            edit.logout()
-
-        elif sys.argv[1].upper() == "GETTEXT":
-            edit.login(sys.argv[2])
-            edit.loadtasks()
-            edit.unlocktask()
-            edit.logout()
-
-        elif sys.argv[1].upper() == "GETAUDIO":
-            edit.login(sys.argv[2])
-            edit.loadtasks()
-            edit.getaudio()
-            edit.logout()
-
-        elif sys.argv[1].upper() == "TASKDONE":
-            edit.login(sys.argv[2])
-            edit.loadtasks()
-            edit.taskdone()
-            edit.logout()
-
-        elif sys.argv[1].upper() == "DIARIZE":
-            edit.login(sys.argv[2])
-            edit.loadtasks()
-            edit.diarize()
-            edit.logout()
-
-        elif sys.argv[1].upper() == "RECOGNIZE":
-            edit.login(sys.argv[2])
-            edit.loadtasks()
-            edit.recognize()
-            edit.logout()
-
-        elif sys.argv[1].upper() == "ALIGN":
-            edit.login(sys.argv[2])
-            edit.loadtasks()
-            edit.align()
-            edit.logout()
+            print("{}".format(Pool))
+            for worker in Pool:
+                print("{}".format(worker))
+                worker.stop()
+                print("JOIN")
+                worker.join()
 
     else:
-            print("UNKNOWN TASK: {}".format(sys.argv))
+        print("{} (P_ADDUSERS|ADDPROJECT|E_ADDUSERS|SIMULATE)".format(sys.argv[0]))
 
