@@ -1,9 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-""" TODO: Clean up startup code...
+"""This allows easy testing of the `projects` service of the
+   application server. It can be run interactively or in 'simulation'
+   mode.
 """
 from __future__ import unicode_literals, division, print_function #Py2
 
+import argparse
 import random
 import time
 import requests
@@ -21,23 +24,53 @@ except ImportError:
 
 import numpy as np
 
+
+DEF_BASEURL = "http://127.0.0.1:9999/wsgi/projects"
+DEF_LOGFILE = "project_tester.log"
+DEF_LOGLEVEL = 20 #INFO
+DEF_TESTFILE = "ptest01.json"
+DEF_DBFILE = "projects.db"
+DEF_NUSERS = 40
+DEF_NPROCS = 40
+DEF_MINDELAY = 20.0 #seconds
+DEF_MAXDELAY = 60.0 #seconds
+
 ################################################################################
-BASEURL = "http://127.0.0.1:9999/wsgi/projects"
-MAXSLEEP = 10.0 #seconds
+def setuplog(logname, logfile, loglevel, tid):
+    try:
+        fmt = "%(asctime)s [%(levelname)s] %(name)s on tid:{} in %(funcName)s(): %(message)s".format(tid)
+        log = logging.getLogger(logname)
+        formatter = logging.Formatter(fmt)
+        ofstream = logging.FileHandler(logfile, encoding="utf-8")
+        ofstream.setFormatter(formatter)
+        log.addHandler(ofstream)
+        log.setLevel(loglevel)
+        #If we want console output:
+        console = logging.StreamHandler()
+        console.setFormatter(formatter)
+        log.addHandler(console)
+        return log
+    except Exception as e:
+        print("FATAL ERROR: Could not create logging instance: {}".format(e), file=sys.stderr)
+        sys.exit(1)
 
 class RequestFailed(Exception):
     pass
 
-def post(service, data):
+def post(service, data, baseurl=DEF_BASEURL):
     headers = {"Content-Type" : "application/json"}
-    servpath = os.path.join(BASEURL, service)
+    servpath = os.path.join(baseurl, service)
     LOG.debug(servpath)
     return requests.post(servpath, headers=headers, data=json.dumps(data))    
+
 ################################################################################
 
 class Test:
-    def __init__(self, testdata, projectdbfile, forever=False):
+    def __init__(self, testdata, projectdbfile, baseurl=DEF_BASEURL, forever=False, seed=None):
         self.__dict__ = testdata
+        self.baseurl = baseurl
+        self.seed = seed
+        LOG.info("SEED: {}".format(self.seed))
         self.state = {"u_notloggedin": True,
                       "u_loggedin": False,
                       "u_hasprojects": False,
@@ -85,25 +118,26 @@ class Test:
         possible_ops = [op for op in self.ops if all(self.state[flag] for flag in self.ops[op])]
         return possible_ops
 
-    def walkthrough(self):
+    def walkthrough(self, mindelay, maxdelay):
+        random.seed(self.seed)
+        np.random.seed(self.seed)
         try:
             while True:
                 possible = self._possible()
                 LOG.info("POSSIBLE: {}".format(possible))
                 idxs = np.arange(len(possible))
-                probs = ((idxs + 1)) / sum((idxs + 1))
+                probs = ((idxs + 1) ** 2) / sum((idxs + 1) ** 2)
                 choice = possible[np.random.choice(idxs, p=probs)]
                 LOG.info("CHOICE: {}".format(choice))
                 getattr(self, choice)()
-                stime = random.random() * MAXSLEEP
+                stime = random.uniform(mindelay, maxdelay)
                 LOG.info("SLEEP: {}".format(stime))
                 time.sleep(stime)
                 if self.state == self.stopstate and not self.forever:
                     LOG.info("DONE!")
-                    break
-        finally:
-            self.logout2()
-            self.deluser()
+                    return (True, None, self)
+        except Exception as e:
+            return (False, e, self)
 
 ### ADMIN
     def adminlin(self, username=None, password=None):
@@ -114,7 +148,7 @@ class Test:
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
-            raise RequestFailed
+            raise RequestFailed(result.text)
         pkg = result.json()
         self.atoken = pkg["token"]
             
@@ -125,7 +159,7 @@ class Test:
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
-            raise RequestFailed
+            raise RequestFailed(result.text)
         self.atoken = None
 
     def adminlout2(self, username=None, password=None):
@@ -136,7 +170,7 @@ class Test:
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
-            raise RequestFailed
+            raise RequestFailed(result.text)
         self.atoken = None
 
     def adduser(self, token=None, username=None, password=None, name=None, surname=None, email=None):
@@ -151,7 +185,7 @@ class Test:
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
-            raise RequestFailed
+            raise RequestFailed(result.text)
 
     def deluser(self, token=None, username=None):
         LOG.debug("ENTER")
@@ -161,7 +195,7 @@ class Test:
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
-            raise RequestFailed
+            raise RequestFailed(result.text)
 
 ### NON-ADMIN
     def login(self, username=None, password=None):
@@ -172,7 +206,7 @@ class Test:
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
-            raise RequestFailed
+            raise RequestFailed(result.text)
         pkg = result.json()
         self.token = pkg['token']
         self.state["u_notloggedin"] = False
@@ -185,7 +219,7 @@ class Test:
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
-            raise RequestFailed
+            raise RequestFailed(result.text)
         self.token = None
         self.state["u_notloggedin"] = True
         self.state["u_loggedin"] = False
@@ -198,7 +232,7 @@ class Test:
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
-            raise RequestFailed
+            raise RequestFailed(result.text)
         self.token = None
         self.state["u_notloggedin"] = True
         self.state["u_loggedin"] = False
@@ -212,7 +246,7 @@ class Test:
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
-            raise RequestFailed
+            raise RequestFailed(result.text)
         self.passw_, self.passw = self.passw, data["password"]
 
     def listcategories(self, token=None):
@@ -222,7 +256,7 @@ class Test:
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
-            raise RequestFailed
+            raise RequestFailed(result.text)
 
     def createproject(self, token=None, projectname=None, category=None):
         LOG.debug("ENTER")
@@ -233,7 +267,7 @@ class Test:
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
-            raise RequestFailed
+            raise RequestFailed(result.text)
         pkg = result.json()
         self.pid = pkg['projectid']
         self.state["u_hasprojects"] = True
@@ -253,7 +287,7 @@ class Test:
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
-            raise RequestFailed
+            raise RequestFailed(result.text)
 
     def loadproject(self, token=None, projectid=None):
         LOG.debug("ENTER")
@@ -263,7 +297,7 @@ class Test:
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
-            raise RequestFailed
+            raise RequestFailed(result.text)
         #DEMIT: set new project parms
 
     def deleteproject(self, token=None, projectid=None):
@@ -274,7 +308,7 @@ class Test:
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
-            raise RequestFailed
+            raise RequestFailed(result.text)
         self.pid = None
         self.state["u_hasprojects"] = False
         self.state["p_loaded"] = False
@@ -285,11 +319,11 @@ class Test:
                 "projectid": projectid or self.pid,
                 "filename": filename or os.path.basename(self.audiofile),
                 "file": open(filename or self.audiofile, "rb")}
-        result = requests.post(os.path.join(BASEURL, "uploadaudio"), files=data)
+        result = requests.post(os.path.join(self.baseurl, "uploadaudio"), files=data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
-            raise RequestFailed
+            raise RequestFailed(result.text)
         self.state["p_hasaudio"] = True
         self.state["p_saved"] = False
 
@@ -297,11 +331,11 @@ class Test:
         LOG.debug("ENTER")
         data = {"token": token or self.token,
                 "projectid": projectid or self.pid}
-        result = requests.get(os.path.join(BASEURL, "getaudio"), params=data)
+        result = requests.get(os.path.join(self.baseurl, "getaudio"), params=data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format("BINARY"))
         if result.status_code != 200:
-            raise RequestFailed
+            raise RequestFailed(result.text)
         #Write temp audiofile
         f, fname = tempfile.mkstemp()
         f = os.fdopen(f, "w")
@@ -319,7 +353,7 @@ class Test:
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
-            raise RequestFailed
+            raise RequestFailed(result.text)
         #SIMULATING SPEECHSERVER JOB
         with self.db:
             outurl, = self.db.execute("SELECT url "
@@ -329,11 +363,11 @@ class Test:
                                      "FROM incoming "
                                      "WHERE projectid=?", (data["projectid"],)).fetchone()
         ##GET
-        result = requests.get(os.path.join(BASEURL, "projects", outurl), params={})
+        result = requests.get(os.path.join(self.baseurl, "projects", outurl), params={})
         LOG.info("SPEECHGETSTAT: {}".format(result.status_code))
         if result.status_code != 200:
             LOG.info("SPEECHGETMESG: {}".format(result.text))
-            raise RequestFailed
+            raise RequestFailed(result.text)
         LOG.info("SPEECHGETMESG: {}".format("BINARY"))
         ###Write temp audiofile
         f, fname = tempfile.mkstemp()
@@ -342,7 +376,7 @@ class Test:
         f.close()
         os.remove(fname)
         ##PUT
-        result = requests.put(os.path.join(BASEURL, "projects", inurl), headers={"Content-Type" : "application/json"}, data=json.dumps(putdata))
+        result = requests.put(os.path.join(self.baseurl, "projects", inurl), headers={"Content-Type" : "application/json"}, data=json.dumps(putdata))
         LOG.info("SPEECHPUTSTAT: {}".format(result.status_code))
         LOG.info("SPEECHPUTMESG: {}".format(result.text))
         self.state["p_saved"] = False
@@ -356,7 +390,7 @@ class Test:
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
-            raise RequestFailed
+            raise RequestFailed(result.text)
         self.state["p_unlocked"] = False
         self.state["p_locked"] = True
 
@@ -370,7 +404,7 @@ class Test:
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
-            raise RequestFailed
+            raise RequestFailed(result.text)
         self.state["p_saved"] = True
 
     def assigntasks(self, token=None, projectid=None):
@@ -381,7 +415,7 @@ class Test:
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
-            raise RequestFailed
+            raise RequestFailed(result.text)
         self.state["p_unassigned"] = False
         self.state["p_assigned"] = True
 
@@ -395,7 +429,7 @@ class Test:
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
-            raise RequestFailed
+            raise RequestFailed(result.text)
         self.state["p_updated"] = True
 
     def unlockproject(self, token=None, projectid=None):
@@ -406,179 +440,116 @@ class Test:
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
-            raise RequestFailed
+            raise RequestFailed(result.text)
         self.state["p_unlocked"] = True
         self.state["p_locked"] = False
 
 def runtest(args):
-    testdata, projectdbfile = args
+    baseurl, testdata, projectdbfile, mindelay, maxdelay, logfile, loglevel = args
     ################################################################################
     ### LOGGING SETUP
     global LOG
-    LOGNAME = "PTESTER"
-    try:
-        fmt = "%(asctime)s [%(levelname)s] %(name)s on tid:{} in %(funcName)s(): %(message)s".format(testdata["testid"])
-        LOG = logging.getLogger(LOGNAME)
-        formatter = logging.Formatter(fmt)
-        ofstream = logging.FileHandler(logfile, encoding="utf-8")
-        ofstream.setFormatter(formatter)
-        LOG.addHandler(ofstream)
-        LOG.setLevel(int(loglevel))
-        #If we want console output:
-        console = logging.StreamHandler()
-        console.setFormatter(formatter)
-        LOG.addHandler(console)
-    except Exception as e:
-        print("FATAL ERROR: Could not create logging instance: {}".format(e), file=sys.stderr)
-        sys.exit(1)
+    LOG = setuplog("PTESTER", logfile, loglevel, testdata["testid"])
     ################################################################################
-    t = Test(testdata, projectdbfile)
-    t.walkthrough()
+    t = Test(testdata, projectdbfile, baseurl=baseurl, seed=testdata["testid"])
+    return t.walkthrough(mindelay, maxdelay)
     
 
 if __name__ == "__main__":
-    logfile, loglevel, testfile, nusers, nprocs, projectdbfile = sys.argv[1:]
-    nusers = int(nusers)
-    nprocs = int(nprocs)
-    with codecs.open(testfile, encoding="utf-8") as testfh:
-        testdata = json.load(testfh)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('mode', metavar='MODE', type=str, help="Mode of operation (interactive|simulate)")
+    parser.add_argument('--baseurl', metavar='BASEURL', type=str, dest="baseurl", default=DEF_BASEURL, help="Base URL for requests")
+    parser.add_argument('--logfile', metavar='LOGFILE', type=str, dest="logfile", default=DEF_LOGFILE, help="Log file path")
+    parser.add_argument('--loglevel', metavar='LOGLEVEL', type=int, dest="loglevel", default=DEF_LOGLEVEL, help="Log verbosity level")
+    parser.add_argument('--testfile', metavar='TESTFILE', type=str, dest="testfile", default=DEF_TESTFILE, help="Test data description file")
+    parser.add_argument('--dbfile', metavar='DBFILE', type=str, dest="dbfile", default=DEF_DBFILE, help="Projects DB file path")
+    parser.add_argument('--nusers', metavar='NUSERS', type=int, dest="nusers", default=DEF_NUSERS, help="Number of concurrent users (simulation mode)")
+    parser.add_argument('--nprocs', metavar='NPROCS', type=int, dest="nprocs", default=DEF_NPROCS, help="Number of concurrent processes (simulation mode)")
+    parser.add_argument('--mindelay', metavar='MINDELAY', type=float, dest="mindelay", default=DEF_MINDELAY, help="Minimum delay between user requests (simulation mode)")
+    parser.add_argument('--maxdelay', metavar='DURATION', type=float, dest="maxdelay", default=DEF_MAXDELAY, help="Maximum delay between user requests (simulation mode)")
+    args = parser.parse_args()
 
     try:
         import multiprocessing
-        POOL = multiprocessing.Pool(processes=nprocs)
+        POOL = multiprocessing.Pool(processes=args.nprocs)
         def map(f, i):
             return POOL.map(f, i, chunksize=1)
     except ImportError:
         pass
 
-    ################################################################################
-    ### LOGGING SETUP
-    LOGNAME = "PTESTER"
-    try:
-        fmt = "%(asctime)s [%(levelname)s] %(name)s on tid:{} in %(funcName)s(): %(message)s".format(testdata["testid"])
-        LOG = logging.getLogger(LOGNAME)
-        formatter = logging.Formatter(fmt)
-        ofstream = logging.FileHandler(logfile, encoding="utf-8")
-        ofstream.setFormatter(formatter)
-        LOG.addHandler(ofstream)
-        LOG.setLevel(int(loglevel))
-        #If we want console output:
-        console = logging.StreamHandler()
-        console.setFormatter(formatter)
-        LOG.addHandler(console)
-    except Exception as e:
-        print("FATAL ERROR: Could not create logging instance: {}".format(e), file=sys.stderr)
-        sys.exit(1)
+    LOG = setuplog("PTESTER", args.logfile, args.loglevel, "admin")
+    with codecs.open(args.testfile, encoding="utf-8") as testfh:
+        testdata = json.load(testfh)
 
-    ################################################################################
-    LOG.info("Accessing Docker app server via: {}".format(BASEURL))
-    LOG.info("Creating {} tests/users".format(nusers))
-    tests = []
-    t = Test(testdata, projectdbfile)
-    try:
+    if args.mode.startswith("sim"):
+        LOG.info("Accessing Docker app server via: {}".format(args.baseurl))
+        LOG.info("Creating {} tests/users".format(args.nusers))
+        tests = []
+        t = Test(testdata, args.dbfile, baseurl=args.baseurl)
         t.adminlin()
-        for i in range(nusers):
+        for i in range(args.nusers):
             tdata = dict(testdata)
             tdata["user"] = "user{}".format(str(i).zfill(2))
             tdata["testid"] = i
             t.adduser(username=tdata["user"])
             tests.append(tdata)
-        LOG.info("Walking through {} tests {} procs".format(nusers, nprocs))
-        map(runtest, [(tdata, projectdbfile) for tdata in tests])
-    finally:
+        LOG.info("Walking through {} tests {} procs".format(args.nusers, args.nprocs))
+        testresults = map(runtest, [(args.baseurl, tdata, args.dbfile, args.mindelay, args.maxdelay, args.logfile, args.loglevel) for tdata in tests])
+        LOG.info("Walkthrough results: {} of {} successful".format(len([flag for flag, _, __ in testresults if flag == True]), len(tests)))
+        LOG.info("Walkthrough failed for TIDs: {}".format(", ".join([str(teststate.testid) for flag, _, teststate in testresults if flag == False])))
+        #force logout all and delete
+        for flag, e, teststate in testresults:
+            LOG.info("tid:{} Logging out and deleting user: {}".format(teststate.testid, teststate.user))
+            LOG.info("tid:{} E-state: {}".format(teststate.testid, e))
+            try:
+                t.logout2(username=teststate.user, password=teststate.passw)
+            except RequestFailed:
+                t.logout2(username=teststate.user, password=teststate.passw_)
+            t.deluser(username=teststate.user)
+        #logout admin
         t.adminlout2()
-
-    # proj = Project(projectdbfile=sys.argv[1])
-
-    # if len(sys.argv) < 3:
-    #     try:
-    #         while True:
-    #             cmd = raw_input("Enter command (type help for list)> ")
-    #             cmd = cmd.lower()
-    #             if cmd == "exit":
-    #                 proj.logout()
-    #                 proj.adminlout()
-    #                 break
-    #             elif cmd in ["help", "list"]:
-    #                 print("ADMINLIN - Admin login")
-    #                 print("ADMINLOUT - Admin logout")
-    #                 print("ADDUSER - add new user\n")
-    #                 print("LOGIN - user login")
-    #                 print("LOGOUT - user logout")
-    #                 print("CHANGEPASSWORD - change user user password")
-    #                 print("CHANGEBACKPASSWORD - change user user password back")
-    #                 print("LISTCATEGORIES - list project categories")
-    #                 print("CREATEPROJECT - create a new project")
-    #                 print("LISTPROJECTS - list projects")
-    #                 print("LOADPROJECT - load projects")
-    #                 print("UPLOADAUDIO - upload audio to project")
-    #                 print("GETAUDIO - retrieve project audio")
-    #                 print("SAVEPROJECT - save tasks to a project")
-    #                 print("ASSIGNTASKS - assign tasks to editors")
-    #                 print("DIARIZEAUDIO - save tasks to a project via diarize request (simulate speech server)\n")
-    #                 print("DIARIZEAUDIO2 - like DIARIZEAUDIO but withouth speech server (project stays locked)\n")
-    #                 print("UNLOCKPROJECT - unlock project (can test this against DIARIZEAUDIO2)")
-    #                 print("EXIT - quit")
-
-    #             else:
-    #                 try:
-    #                     meth = getattr(proj, cmd)
-    #                     meth()
-    #                 except Exception as e:
-    #                     print('Error processing command:', e)
-
-    #     except:
-    #         proj.logout()
-    #         proj.adminlout()
-    #         print('')
-    # else:
-    #     if sys.argv[2].upper() == "ASSIGN":
-    #         proj.login()
-    #         proj.createproject()
-    #         proj.uploadaudio()
-    #         proj.saveproject()
-    #         proj.assigntasks()
-    #         proj.logout()
-    #     elif sys.argv[2].upper() == "ASSIGN_NOTASKS":
-    #         proj.login()
-    #         proj.createproject()
-    #         proj.uploadaudio()
-    #         proj.assigntasks()
-    #         proj.logout()
-    #     elif sys.argv[2].upper() == "DIARIZE_ASSIGN":
-    #         proj.login()
-    #         proj.createproject()
-    #         proj.uploadaudio()
-    #         proj.diarizeaudio()
-    #         proj.saveproject()
-    #         proj.assigntasks()
-    #         proj.logout()
-    #     elif sys.argv[2].upper() == "DIARIZE_ASSIGN_UPDATE":
-    #         proj.login()
-    #         proj.createproject()
-    #         proj.uploadaudio()
-    #         proj.diarizeaudio()
-    #         proj.saveproject()
-    #         proj.assigntasks()
-    #         proj.updateproject()
-    #         proj.logout()
-    #     elif sys.argv[2].upper() == "DIARIZE_ASSIGN_DELETE":
-    #         proj.login()
-    #         proj.createproject()
-    #         proj.uploadaudio()
-    #         proj.diarizeaudio()
-    #         proj.saveproject()
-    #         proj.assigntasks()
-    #         proj.deleteproject()
-    #         proj.logout()
-    #     elif sys.argv[2].upper() == "DIARIZE_DELETE":
-    #         proj.login()
-    #         proj.createproject()
-    #         proj.uploadaudio()
-    #         proj.diarizeaudio()
-    #         proj.saveproject()
-    #         proj.deleteproject()
-    #         proj.logout()
-    #     else:
-    #         print("UNKNOWN TASK: {}".format(sys.argv[2]))
-
+    elif args.mode.startswith("int"):
+        t = Test(testdata, args.dbfile, baseurl=args.baseurl)
+        try:
+            while True:
+                cmd = raw_input("Enter command (type help for list)> ")
+                cmd = cmd.lower()
+                if cmd == "exit":
+                    t.logout2()
+                    t.adminlout2()
+                    break
+                elif cmd in ["help", "list"]:
+                    print("ADMINLIN - Admin login")
+                    print("ADMINLOUT - Admin logout")
+                    print("ADMINLOUT2 - Admin logout (with username & password)")
+                    print("ADDUSER - add new user\n")
+                    print("DELUSER - delete new user\n")
+                    print("LOGIN - user login")
+                    print("LOGOUT - user logout")
+                    print("LOGOUT2 - user logout (with username & password)")
+                    print("CHANGEPASSWORD - change user user password")
+                    print("CHANGEBACKPASSWORD - change user user password back")
+                    print("LISTCATEGORIES - list project categories")
+                    print("CREATEPROJECT - create a new project")
+                    print("LISTPROJECTS - list projects")
+                    print("LOADPROJECT - load projects")
+                    print("UPLOADAUDIO - upload audio to project")
+                    print("GETAUDIO - retrieve project audio")
+                    print("SAVEPROJECT - save tasks to a project")
+                    print("ASSIGNTASKS - assign tasks to editors")
+                    print("DIARIZEAUDIO - save tasks to a project via diarize request (simulate speech server)\n")
+                    print("DIARIZEAUDIO2 - like DIARIZEAUDIO but withouth speech server (project stays locked)\n")
+                    print("UNLOCKPROJECT - unlock project (can test this against DIARIZEAUDIO2)")
+                    print("EXIT - quit")
+                else:
+                    try:
+                        meth = getattr(t, cmd)
+                        meth()
+                    except Exception as e:
+                        print('Error processing command:', e)
+        except:
+            t.logout2()
+            t.adminlout2()
+            print('')
+    else:
+        parser.print_help()
