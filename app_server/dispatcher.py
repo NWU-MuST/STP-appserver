@@ -158,12 +158,11 @@ class Dispatch:
 
         try:
             module = module_hook(module_config, self._speech)
-        except:
-            try:
+        except TypeError as e:
+            if "__init__()" in str(e):
                 module = module_hook(module_config)
-            except:
+            else:
                 raise
-
         method = getattr(module, self._routing['POST'][uri]['method'])
 
         dispatch_result = dict()
