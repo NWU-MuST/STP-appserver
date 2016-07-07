@@ -707,6 +707,7 @@ class EditorDB(sqlite.Connection):
             return "No projects have been created"
 
         # Fetch all the years 
+        #TODO: add projectname & category
         years = []
         for projectid in project_okay:
             _tmp = self.get_project(projectid, fields=["year"])

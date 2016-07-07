@@ -36,6 +36,11 @@ SOXI_BIN = "/usr/bin/soxi"; assert os.stat(SOXI_BIN)
 
 TASKID_DIR_ZFILL = 3
 
+## TODO: project manager and collator are the same and share UI
+## FLOW: PM uploads and assigns task. The assignment re-assigns the project the collator
+## The PM can still view created tasks
+## The collator can push back assignment to PM
+
 def authlog(okaymsg):
     """This performs authentication (inserting `username` into function
        namespace) and logs the ENTRY, FAILURE or OK return of the

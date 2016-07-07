@@ -28,7 +28,7 @@ def create_new_db(dbfn):
                                                                                                "email VARCHAR(50)",
                                                                                                "tmppwhash VARCHAR(60)"])))
     db_curs.execute("CREATE TABLE tokens ({})".format(", ".join(["token VARCHAR(20) PRIMARY KEY",
-                                                                 "username VARCHAR(20)",
+                                                                 "username VARCHAR(30)",
                                                                  "expiry TIMESTAMP"])))
     db_conn.commit()
     return db_conn
