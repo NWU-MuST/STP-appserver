@@ -57,6 +57,7 @@ def authlog(okaymsg):
             else:
                 LOG.debug("ENTER: without 'file' --> request={}".format(
                     dict([(k, request[k]) for k in request if k != "file"])), extra=logfuncname)
+            username = None #in case exception before authenticate
             try:
                 #AUTH + INSERT USERNAME INTO FUNC SCOPE
                 username = self.authdb.authenticate(request["token"])
@@ -155,8 +156,9 @@ class Projects(auth.UserAuth):
             db.delete_project(request["projectid"])
         #Remove any files associated with project
         if row:
-            projectpath = os.path.dirname(row["audiofile"])
-        shutil.rmtree(projectpath, ignore_errors=True)
+            if row["audiofile"]:
+                projectpath = os.path.dirname(row["audiofile"])
+                shutil.rmtree(projectpath, ignore_errors=True)
         return "Project deleted!"
 
     @authlog("Returning loaded project")
@@ -477,6 +479,7 @@ class Projects(auth.UserAuth):
             return {"mime": "audio/ogg", "filename": row["audiofile"]}
         except Exception as e:
             LOG.info("FAIL: {}".format(e))
+            raise
 
     def incoming(self, uri, data):
         LOG.debug("ENTER: url={} data={}".format(uri, data))
@@ -495,6 +498,7 @@ class Projects(auth.UserAuth):
             return "Request successful!"
         except Exception as e:
             LOG.info("FAIL: {}".format(e))
+            raise
 
     def _incoming_diarize(self, data, projectid):
         LOG.debug("ENTER: projectid={} data={}".format(projectid, data))
@@ -525,6 +529,7 @@ class Projects(auth.UserAuth):
             with self.db as db:
                 db.unlock_project(projectid, errstatus=data["errstatus"])
             LOG.info("FAIL: {}".format(e))
+            raise
 
 
 class ProjectDB(sqlite.Connection):

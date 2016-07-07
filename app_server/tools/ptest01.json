@@ -1,0 +1,31 @@
+{
+    "testid": 1,
+
+    "auser": "root",
+    "apassw": "123456",
+    "atoken": null,
+
+    "user": "neil",
+    "passw": "neil",
+    "passw_": "neil2",
+    "token": null,
+    "name": "Neil",
+    "surname": "Kleynhans",
+    "email": "neil@organisation.org",
+
+    "projectname": "masefield",
+    "projectcat": "NCOP",
+    "audiofile": "/home/demitasse/workspace/stp_dockerbuild/stp/app_server/tools/tallship.ogg",
+    "audiodur": 5.154830,
+    "pid": null,
+
+    "savetasks": [{"editor" : "neil", "collator" : "neil", "start" : 0.0, "end" : 2.0, "language" : "English"},
+                  {"editor" : "daniel", "collator" : "daniel", "start" : 2.0, "end" : 4.0, "language" : "Afrikaans"},
+                  {"editor" : "gamer", "collator" : "gamer", "start" : 4.0, "end" : 5.154830, "language" : "Zulu"}],
+    "saveproj": {"projectname": "saved_project"},
+    
+    "updatetasks": [{"taskid": 2, "editor" : "daniel", "collator" : "daniel", "start" : 4.0, "end" : 5.154830, "language" : "Guangdong hua"}],
+    "updateproj": {"projectname": "updated_project"},
+
+    "diarizectm": "0.0 1.0\n1.0 2.0\n2.0 5.154830"
+}

@@ -1,410 +1,532 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""This allows easy testing of the `projects` service of the
+   application server. It can be run interactively or in 'simulation'
+   mode.
+"""
 from __future__ import unicode_literals, division, print_function #Py2
 
+import argparse
+import random
+import time
 import requests
 import sys
 import json
 import os
+import tempfile
+import logging
+import codecs
+from collections import OrderedDict
 try:
     from sqlite3 import dbapi2 as sqlite
 except ImportError:
     from pysqlite2 import dbapi2 as sqlite #for old Python versions
 
-BASEURL = "http://127.0.0.1:9999/wsgi/"
+import numpy as np
 
 
-class Project:
+DEF_BASEURL = "http://127.0.0.1:9999/wsgi/projects"
+DEF_LOGFILE = "project_tester.log"
+DEF_LOGLEVEL = 20 #INFO
+DEF_TESTFILE = "ptest01.json"
+DEF_DBFILE = "projects.db"
+DEF_NUSERS = 40
+DEF_NPROCS = 40
+DEF_MINDELAY = 20.0 #seconds
+DEF_MAXDELAY = 60.0 #seconds
 
-    def __init__(self, projectdbfile=None):
-        self.user_token = None
-        self.admin_token = None
-        self.projectid = None
-        if projectdbfile:
-            self.db = sqlite.connect(projectdbfile)
-            self.db.row_factory = sqlite.Row
+################################################################################
+def setuplog(logname, logfile, loglevel, tid):
+    try:
+        fmt = "%(asctime)s [%(levelname)s] %(name)s on tid:{} in %(funcName)s(): %(message)s".format(tid)
+        log = logging.getLogger(logname)
+        formatter = logging.Formatter(fmt)
+        ofstream = logging.FileHandler(logfile, encoding="utf-8")
+        ofstream.setFormatter(formatter)
+        log.addHandler(ofstream)
+        log.setLevel(loglevel)
+        #If we want console output:
+        console = logging.StreamHandler()
+        console.setFormatter(formatter)
+        log.addHandler(console)
+        return log
+    except Exception as e:
+        print("FATAL ERROR: Could not create logging instance: {}".format(e), file=sys.stderr)
+        sys.exit(1)
 
-    def adminlin(self):
-        """
-            Login as admin
-            Place admin 'token' in self.admin_token
-        """
-        if self.admin_token is None:
-            headers = {"Content-Type" : "application/json"}
-            data = {"username": "root", "password": "123456"}
-            res = requests.post(BASEURL + "projects/admin/login", headers=headers, data=json.dumps(data))
-            print('adminlin(): SERVER SAYS:', res.text)
-            print(res.status_code)
-            pkg = res.json()
-            self.admin_token = pkg['token']
-        else:
-            print("Admin logged in already!")
-        print('')
+class RequestFailed(Exception):
+    pass
 
-    def adminlout(self):
-        """
-            Logout as admin
-        """
-        if self.admin_token is not None:
-            headers = {"Content-Type" : "application/json"}
-            data = {"token": self.admin_token}
-            res = requests.post(BASEURL + "projects/admin/logout", headers=headers, data=json.dumps(data))
-            print('adminlout(): SERVER SAYS:', res.text)
-            self.admin_token = None
-        else:
-            print("Admin not logged in!")
-        print('')
+def post(service, data, baseurl=DEF_BASEURL):
+    headers = {"Content-Type" : "application/json"}
+    servpath = os.path.join(baseurl, service)
+    LOG.debug(servpath)
+    return requests.post(servpath, headers=headers, data=json.dumps(data))    
 
-    def adduser(self):
-        """
-            Add user project database
-            User details: "username": "neil", "password": "neil", "name": "neil", "surname": "kleynhans", "email": "neil@organisation.org"
-        """
-        if self.admin_token is not None:
-            headers = {"Content-Type" : "application/json"}
-            data = {"token": self.admin_token, "username": "neil", "password": "neil", "name": "neil", "surname": "kleynhans", "email": "neil@organisation.org"}
-            res = requests.post(BASEURL + "projects/admin/adduser", headers=headers, data=json.dumps(data))
-            print('adduser(): SERVER SAYS:', res.text)
-            print(res.status_code)
-        else:
-            print("Admin not logged in!")
-        print('')
+################################################################################
 
-    def login(self):
-        """
-            Login as user
-            Place user 'token' in self.user_token
-        """
-        if self.user_token is None:
-            headers = {"Content-Type" : "application/json"}
-            data = {"username": "neil", "password": "neil"}
-            res = requests.post(BASEURL + "projects/login", headers=headers, data=json.dumps(data))
-            print('login(): SERVER SAYS:', res.text)
-            pkg = res.json()
-            self.user_token = pkg['token']
-        else:
-            print("User logged in already!")
-        print('')
+class Test:
+    def __init__(self, testdata, projectdbfile, baseurl=DEF_BASEURL, forever=False, seed=None):
+        self.__dict__ = testdata
+        self.baseurl = baseurl
+        self.seed = seed
+        LOG.info("SEED: {}".format(self.seed))
+        self.state = {"u_notloggedin": True,
+                      "u_loggedin": False,
+                      "u_hasprojects": False,
+                      "p_loaded": False,
+                      "p_hasaudio": False,
+                      "p_saved": False,
+                      "p_unlocked": False,
+                      "p_locked": False,
+                      "p_unassigned": False,
+                      "p_assigned": False,
+                      "p_updated": False}
+        self.ops = OrderedDict([("logout2", {}),
+                                ("logout", {"u_loggedin"}),
+                                ("login", {"u_notloggedin"}),                       
+                                ("createproject", {"u_loggedin"}),
+                                ("deleteproject", {"u_loggedin", "u_hasprojects", "p_loaded"}),
+                                ("changepassword", {"u_loggedin"}),
+                                ("listprojects", {"u_loggedin"}),
+                                ("loadproject", {"u_loggedin", "u_hasprojects", "p_unlocked"}),
+                                ("uploadaudio", {"u_loggedin", "u_hasprojects", "p_loaded", "p_unlocked", "p_unassigned"}),
+                                ("getaudio", {"u_loggedin", "u_hasprojects", "p_loaded", "p_hasaudio", "p_unlocked", "p_unassigned"}),
+                                ("diarizeaudio", {"u_loggedin", "u_hasprojects", "p_loaded", "p_hasaudio", "p_unlocked", "p_unassigned"}),
+                                ("diarizeaudio2", {"u_loggedin", "u_hasprojects", "p_loaded", "p_hasaudio", "p_unlocked", "p_unassigned"}),
+                                ("unlockproject", {"u_loggedin", "u_hasprojects", "p_loaded", "p_locked"}),
+                                ("saveproject", {"u_loggedin", "u_hasprojects", "p_loaded", "p_hasaudio", "p_unlocked", "p_unassigned"}),
+                                ("assigntasks", {"u_loggedin", "u_hasprojects", "p_loaded", "p_hasaudio", "p_saved", "p_unlocked", "p_unassigned"}),
+                                ("updateproject", {"u_loggedin", "u_hasprojects", "p_loaded", "p_hasaudio", "p_saved", "p_unlocked", "p_assigned"})])
+        self.forever = forever
+        self.stopstate = {"u_notloggedin": False,
+                          "u_loggedin": True,
+                          "u_hasprojects": True,
+                          "p_loaded": True,
+                          "p_hasaudio": True,
+                          "p_saved": True,
+                          "p_unlocked": True,
+                          "p_locked": False,
+                          "p_unassigned": False,
+                          "p_assigned": True,
+                          "p_updated": True}
+        self.db = sqlite.connect(projectdbfile)
+        self.db.row_factory = sqlite.Row
 
-    def logout(self):
-        """
-            Logout as user
-        """
-        if self.user_token is not None:
-            headers = {"Content-Type" : "application/json"}
-            data = {"token": self.user_token}
-            res = requests.post(BASEURL + "projects/logout", headers=headers, data=json.dumps(data))
-            print('logout(): SERVER SAYS:', res.text)
-            self.user_token = None
-        else:
-            print("User not logged in!")
-        print('')
+    def _possible(self):
+        possible_ops = set()
+        possible_ops = [op for op in self.ops if all(self.state[flag] for flag in self.ops[op])]
+        return possible_ops
 
-    def changepassword(self):
-        """
-            Logout as user
-        """
-        if self.user_token is not None:
-            headers = {"Content-Type" : "application/json"}
-            data = {"token": self.user_token, "password": "otherpass"}
-            res = requests.post(BASEURL + "projects/changepassword", headers=headers, data=json.dumps(data))
-            print('changepassword(): SERVER SAYS:', res.text)
-        else:
-            print("User not logged in!")
-        print('')
+    def walkthrough(self, mindelay, maxdelay):
+        random.seed(self.seed)
+        np.random.seed(self.seed)
+        try:
+            while True:
+                possible = self._possible()
+                LOG.info("POSSIBLE: {}".format(possible))
+                idxs = np.arange(len(possible))
+                probs = ((idxs + 1) ** 2) / sum((idxs + 1) ** 2)
+                choice = possible[np.random.choice(idxs, p=probs)]
+                LOG.info("CHOICE: {}".format(choice))
+                getattr(self, choice)()
+                stime = random.uniform(mindelay, maxdelay)
+                LOG.info("SLEEP: {}".format(stime))
+                time.sleep(stime)
+                if self.state == self.stopstate and not self.forever:
+                    LOG.info("DONE!")
+                    return (True, None, self)
+        except Exception as e:
+            return (False, e, self)
 
-    def changebackpassword(self):
-        """
-            Logout as user
-        """
-        if self.user_token is not None:
-            headers = {"Content-Type" : "application/json"}
-            data = {"token": self.user_token, "password": "neil"}
-            res = requests.post(BASEURL + "projects/changepassword", headers=headers, data=json.dumps(data))
-            print('changebackpassword(): SERVER SAYS:', res.text)
-        else:
-            print("User not logged in!")
-        print('')
+### ADMIN
+    def adminlin(self, username=None, password=None):
+        LOG.debug("ENTER")
+        data = {"username": username or self.auser,
+                "password": password or self.apassw}
+        result = post("admin/login", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+        pkg = result.json()
+        self.atoken = pkg["token"]
+            
+    def adminlout(self, token=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.atoken}
+        result = post("admin/logout", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+        self.atoken = None
 
-    def logout2(self):
-        """
-            Force logout user
-        """
-        if self.user_token is not None:
-            headers = {"Content-Type" : "application/json"}
-            data = {"username": "neil", "password": "neil"}
-            res = requests.post(BASEURL + "projects/logout2", headers=headers, data=json.dumps(data))
-            print('logout2(): SERVER SAYS:', res.text)
-            self.user_token = None
-        else:
-            print("User not logged in!")
-        print('')
+    def adminlout2(self, username=None, password=None):
+        LOG.debug("ENTER")
+        data = {"username": username or self.auser,
+                "password": password or self.apassw}
+        result = post("admin/logout2", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+        self.atoken = None
 
-    def listcategories(self):
-        """
-            List the project categories defined in project JSON config
-        """
-        if self.user_token is not None:
-            headers = {"Content-Type" : "application/json"}
-            data = {"token": self.user_token}
-            res = requests.post(BASEURL + "projects/listcategories", headers=headers, data=json.dumps(data))
-            print('listcategories(): SERVER SAYS:', res.text)
-            print(res.status_code)
-        else:
-            print("User not logged in!")
-        print('')
+    def adduser(self, token=None, username=None, password=None, name=None, surname=None, email=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.atoken,
+                "username": username or self.user,
+                "password": password or self.passw,
+                "name": name or self.name,
+                "surname": surname or self.surname,
+                "email": email or self.email}
+        result = post("admin/adduser", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
 
-    def createproject(self):
-        """
-            Create a new project
-            Save returned projectid in self.projectid
-        """
-        if self.user_token is not None:
-            headers = {"Content-Type" : "application/json"}
-            data = {"token": self.user_token, "projectname" : "new_project", "category" : "NCOP" }
-            res = requests.post(BASEURL + "projects/createproject", headers=headers, data=json.dumps(data))
-            print('createproject(): SERVER SAYS:', res.text)
-            print(res.status_code)
-            pkg = res.json()
-            self.projectid = pkg['projectid']
-        else:
-            print("User not logged in!")
-        print('')
+    def deluser(self, token=None, username=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.atoken,
+                "username": username or self.user}
+        result = post("admin/deluser", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
 
-    def listprojects(self):
-        """
-            List all projects belonging to user
-        """
-        if self.user_token is not None:
-            headers = {"Content-Type" : "application/json"}
-            data = {"token": self.user_token}
-            res = requests.post(BASEURL + "projects/listprojects", headers=headers, data=json.dumps(data))
-            print('listprojects(): SERVER SAYS:', res.text)
-            print(res.status_code)
-        else:
-            print("User not logged in!")
-        print('')
+### NON-ADMIN
+    def login(self, username=None, password=None):
+        LOG.debug("ENTER")
+        data = {"username": username or self.user,
+                "password": password or self.passw}
+        result = post("login", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+        pkg = result.json()
+        self.token = pkg['token']
+        self.state["u_notloggedin"] = False
+        self.state["u_loggedin"] = True
 
-    def loadproject(self):
-        """
-            Load a specific projects details
-        """
-        if self.user_token is not None and self.projectid is not None:
-            headers = {"Content-Type" : "application/json"}
-            data = {"token": self.user_token, "projectid" : self.projectid}
-            res = requests.post(BASEURL + "projects/loadproject", headers=headers, data=json.dumps(data))
-            print('loadproject(): SERVER SAYS:', res.text)
-            print(res.status_code)
-        else:
-            print("User not logged in!")
-        print('')
+    def logout(self, token=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.token}
+        result = post("logout", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+        self.token = None
+        self.state["u_notloggedin"] = True
+        self.state["u_loggedin"] = False
 
-    def deleteproject(self):
-        """Delete a specific project
-        """
-        if self.user_token is not None and self.projectid is not None:
-            headers = {"Content-Type" : "application/json"}
-            data = {"token": self.user_token, "projectid" : self.projectid}
-            res = requests.post(BASEURL + "projects/deleteproject", headers=headers, data=json.dumps(data))
-            print('deleteproject(): SERVER SAYS:', res.text)
-            print(res.status_code)
-        else:
-            print("User not logged in!")
-        print('')
-
-    def getaudio(self):
-        """
-            Return uploaded project audio
-            Will save the uploaded audio to 'tmp.ogg' in current location
-        """
-        if self.user_token is not None and self.projectid is not None:
-            params = {'token' : self.user_token, 'projectid' : self.projectid}
-            res = requests.get(BASEURL + "projects/getaudio", params=params)
-            print(res.status_code)
-            if res.status_code == 200:
-                with open('tmp.ogg', 'wb') as f:
-                    f.write(res.content)
-            else:
-                print('getaudio(): SERVER SAYS:', res.text)
-        else:
-            print("User not logged in!")
-        print('')
+    def logout2(self, username=None, password=None):
+        LOG.debug("ENTER")
+        data = {"username": username or self.user,
+                "password": password or self.passw}
+        result = post("logout2", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+        self.token = None
+        self.state["u_notloggedin"] = True
+        self.state["u_loggedin"] = False
 
 
-    def uploadaudio(self):
-        """
-            Upload audio to project
-            Requires test.ogg to be located in current location
-        """
-        if not os.path.exists('test.ogg'):
-            print('Cannot run UPLOADAUDIO as "test.ogg" does not exist in current path')
-            return
+    def changepassword(self, token=None, username=None, password=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.token,
+                "password": password or self.passw_}
+        result = post("changepassword", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+        self.passw_, self.passw = self.passw, data["password"]
 
-        if self.user_token is not None and self.projectid is not None:
-            files = {'file' : open('test.ogg', 'rb'), 'filename' : 'test.ogg', 'token' : self.user_token, 'projectid' : self.projectid}
-            res = requests.post(BASEURL + "projects/uploadaudio", files=files)
-            print('uploadaudio(): SERVER SAYS:', res.text)
-            print(res.status_code)
-        else:
-            print("User not logged in!")
-        print('')
+    def listcategories(self, token=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.token}
+        result = post("listcategories", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
 
+    def createproject(self, token=None, projectname=None, category=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.token,
+                "projectname": projectname or self.projectname,
+                "category": category or self.projectcat}
+        result = post("createproject", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+        pkg = result.json()
+        self.pid = pkg['projectid']
+        self.state["u_hasprojects"] = True
+        self.state["p_loaded"] = True
+        self.state["p_hasaudio"] = False
+        self.state["p_saved"] = False
+        self.state["p_unlocked"] = True
+        self.state["p_locked"] = False
+        self.state["p_unassigned"] = True
+        self.state["p_assigned"] = False
+        self.state["p_updated"] = False
 
-    def saveproject(self):
-        """
-            Save tasks for a specific project
-            tasks should be a list of dicts with these elements:
-            tasks = [(editor<string:20>, collater<string:20>, start<float>, end<float>), (), ...]
-        """
-        if self.user_token is not None and self.projectid is not None:
-            headers = {"Content-Type" : "application/json"}
-            #tasks = [{"editor" : "neil", "collator" : "neil", "start" : 0.0, "end" : 20.0, "language" : "English"},
-            #        {"editor" : "daniel", "collator" : "daniel", "start" : 20.0, "end" : 40.0, "language" : "Afrikaans"},
-            #        {"editor" : "gamer", "collator" : "gamer", "start" : 40.0, "end" : 309.56, "language" : "Zulu"}]
-            tasks = [{"editor" : "neil", "collator" : "neil", "start" : 0.0, "end" : 19.96, "language" : "English"}]
-            project = {"projectname": "saved_project"}
-            data = {"token": self.user_token, "projectid" : self.projectid, "tasks": tasks, "project": project}
-            res = requests.post(BASEURL + "projects/saveproject", headers=headers, data=json.dumps(data))
-            print('saveproject(): SERVER SAYS:', res.text)
-            print(res.status_code)
-        else:
-            print("User not logged in!")
-        print('')
+    def listprojects(self, token=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.token}
+        result = post("listprojects", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
 
-    def assigntasks(self):
-        """
-            Assign tasks to editors
-        """
-        if self.user_token is not None and self.projectid is not None:
-            headers = {"Content-Type" : "application/json"}
-            data = {"token": self.user_token, "projectid" : self.projectid}
-            res = requests.post(BASEURL + "projects/assigntasks", headers=headers, data=json.dumps(data))
-            print('assigntasks(): SERVER SAYS:', res.text)
-            print(res.status_code)
-        else:
-            print("User not logged in!")
-        print('')
+    def loadproject(self, token=None, projectid=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.token,
+                "projectid": projectid or self.pid}
+        result = post("loadproject", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+        #DEMIT: set new project parms
 
-    def updateproject(self):
-        """
-            Update tasks and project info (after assignment) for a specific project
-            tasks should be a list of dicts with these elements:
-            tasks = [{taskid:, editor:, collater:, language:, ownership}, {}, ...]
-            project is a dict with these elements:
-            project = {projectname:, category:}
-        """
-        if self.user_token is not None and self.projectid is not None:
-            headers = {"Content-Type" : "application/json"}
-            tasks = [{"taskid": 2, "editor" : "daniel", "collator" : "daniel", "start" : 40.0, "end" : 309.56, "language" : "Guangdong hua"}]
-            project = {"projectname": "updated_project"}
-            data = {"token": self.user_token, "projectid" : self.projectid, "tasks": tasks, "project": project}
-            res = requests.post(BASEURL + "projects/updateproject", headers=headers, data=json.dumps(data))
-            print('updateproject(): SERVER SAYS:', res.text)
-            print(res.status_code)
-        else:
-            print("User not logged in!")
-        print('')
+    def deleteproject(self, token=None, projectid=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.token,
+                "projectid": projectid or self.pid}
+        result = post("deleteproject", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+        self.pid = None
+        self.state["u_hasprojects"] = False
+        self.state["p_loaded"] = False
 
-    def unlockproject(self):
-        """
-            Unlock the project in event of error or when cancelling a speech job
-        """
-        if self.user_token is not None and self.projectid is not None:
-            headers = {"Content-Type" : "application/json"}
-            data = {"token": self.user_token, "projectid" : self.projectid}
-            res = requests.post(BASEURL + "projects/unlockproject", headers=headers, data=json.dumps(data))
-            print('unlockproject(): SERVER SAYS:', res.text)
-            print(res.status_code)
-        else:
-            print("User not logged in!")
-        print('')
+    def uploadaudio(self, token=None, projectid=None, filename=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.token,
+                "projectid": projectid or self.pid,
+                "filename": filename or os.path.basename(self.audiofile),
+                "file": open(filename or self.audiofile, "rb")}
+        result = requests.post(os.path.join(self.baseurl, "uploadaudio"), files=data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+        self.state["p_hasaudio"] = True
+        self.state["p_saved"] = False
 
-    def assigntasks(self):
-        """
-            Assign tasks to editors
-        """
-        if self.user_token is not None and self.projectid is not None:
-            headers = {"Content-Type" : "application/json"}
-            data = {"token": self.user_token, "projectid" : self.projectid}
-            res = requests.post(BASEURL + "projects/assigntasks", headers=headers, data=json.dumps(data))
-            print('SERVER SAYS:', res.text)
-            print(res.status_code)
-        else:
-            print("User not logged in!")
-        print('')
+    def getaudio(self, token=None, projectid=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.token,
+                "projectid": projectid or self.pid}
+        result = requests.get(os.path.join(self.baseurl, "getaudio"), params=data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format("BINARY"))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+        #Write temp audiofile
+        f, fname = tempfile.mkstemp()
+        f = os.fdopen(f, "w")
+        f.write(result.content)
+        f.close()
+        os.remove(fname)
 
+    def diarizeaudio(self, token=None, projectid=None, ctm=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.token,
+                "projectid": projectid or self.pid}
+        putdata = {"CTM": ctm or self.diarizectm}
 
-    def diarizeaudio(self):
-        """
-            Make diarize request to split project into tasks (and simulate speech server)
-        """
-        if self.user_token is not None and self.projectid is not None:
-            headers = {"Content-Type" : "application/json"}
-            data = {"token": self.user_token, "projectid" : self.projectid}
-            res = requests.post(BASEURL + "projects/diarizeaudio", headers=headers, data=json.dumps(data))
-            print('diarizeaudio(): SERVER SAYS:', res.text)
-            print(res.status_code)
-            print("SIMULATING SPEECH SERVER JOB:")
-            #GET URLs:
-            with self.db:
-                outurl, = self.db.execute("SELECT url "
-                                          "FROM outgoing "
-                                          "WHERE projectid=?", (self.projectid,)).fetchone()
-                inurl, = self.db.execute("SELECT url "
-                                         "FROM incoming "
-                                         "WHERE projectid=?", (self.projectid,)).fetchone()
-            print("\tSPEECHSERVER GET: ", end="")
-            res = requests.get(BASEURL + outurl, params={})
-            print(res.status_code)
-            if res.status_code == 200:
-                with open('diarize_tmp.ogg', 'wb') as f:
-                    f.write(res.content)
-            else:
-                print('SERVER SAYS:', res.text)
-            print("\tSPEECHSERVER PUT: ", end="")
-            data = {"CTM": "0.0 5.0\n5.0 10.0\n10.0 309.56"}
-            res = requests.put(BASEURL + inurl, headers=headers, data=json.dumps(data))
-            print(res.status_code)
-            if res.status_code != 200:
-                print('SERVER SAYS:', res.text)                
-        else:
-            print("User not logged in!")
-        print('')
+        result = post("diarizeaudio", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+        #SIMULATING SPEECHSERVER JOB
+        with self.db:
+            outurl, = self.db.execute("SELECT url "
+                                      "FROM outgoing "
+                                      "WHERE projectid=?", (data["projectid"],)).fetchone()
+            inurl, = self.db.execute("SELECT url "
+                                     "FROM incoming "
+                                     "WHERE projectid=?", (data["projectid"],)).fetchone()
+        ##GET
+        result = requests.get(os.path.join(self.baseurl, "projects", outurl), params={})
+        LOG.info("SPEECHGETSTAT: {}".format(result.status_code))
+        if result.status_code != 200:
+            LOG.info("SPEECHGETMESG: {}".format(result.text))
+            raise RequestFailed(result.text)
+        LOG.info("SPEECHGETMESG: {}".format("BINARY"))
+        ###Write temp audiofile
+        f, fname = tempfile.mkstemp()
+        f = os.fdopen(f, "w")
+        f.write(result.content)
+        f.close()
+        os.remove(fname)
+        ##PUT
+        result = requests.put(os.path.join(self.baseurl, "projects", inurl), headers={"Content-Type" : "application/json"}, data=json.dumps(putdata))
+        LOG.info("SPEECHPUTSTAT: {}".format(result.status_code))
+        LOG.info("SPEECHPUTMESG: {}".format(result.text))
+        self.state["p_saved"] = False
+        
 
-    def diarizeaudio2(self):
-        """
-            Make diarize request to split project into tasks (don't simulate speech server)
-        """
-        if self.user_token is not None and self.projectid is not None:
-            headers = {"Content-Type" : "application/json"}
-            data = {"token": self.user_token, "projectid" : self.projectid}
-            res = requests.post(BASEURL + "projects/diarizeaudio", headers=headers, data=json.dumps(data))
-            print('diarizeaudio2(): SERVER SAYS:', res.text)
-            print(res.status_code)
-        else:
-            print("User not logged in!")
-        print('')
+    def diarizeaudio2(self, token=None, projectid=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.token,
+                "projectid": projectid or self.pid}
+        result = post("diarizeaudio", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+        self.state["p_unlocked"] = False
+        self.state["p_locked"] = True
 
+    def saveproject(self, token=None, projectid=None, tasks=None, project=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.token,
+                "projectid": projectid or self.pid,
+                "tasks": tasks or self.savetasks,
+                "project": project or self.saveproj}
+        result = post("saveproject", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+        self.state["p_saved"] = True
+
+    def assigntasks(self, token=None, projectid=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.token,
+                "projectid": projectid or self.pid}
+        result = post("assigntasks", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+        self.state["p_unassigned"] = False
+        self.state["p_assigned"] = True
+
+    def updateproject(self, token=None, projectid=None, tasks=None, project=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.token,
+                "projectid": projectid or self.pid,
+                "tasks": tasks or self.updatetasks,
+                "project": project or self.updateproj}
+        result = post("updateproject", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+        self.state["p_updated"] = True
+
+    def unlockproject(self, token=None, projectid=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.token,
+                "projectid": projectid or self.pid}
+        result = post("unlockproject", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+        self.state["p_unlocked"] = True
+        self.state["p_locked"] = False
+
+def runtest(args):
+    baseurl, testdata, projectdbfile, mindelay, maxdelay, logfile, loglevel = args
+    ################################################################################
+    ### LOGGING SETUP
+    global LOG
+    LOG = setuplog("PTESTER", logfile, loglevel, testdata["testid"])
+    ################################################################################
+    t = Test(testdata, projectdbfile, baseurl=baseurl, seed=testdata["testid"])
+    return t.walkthrough(mindelay, maxdelay)
+    
 
 if __name__ == "__main__":
-    print('Accessing Docker app server via: http://127.0.0.1:9999/wsgi/')
-    proj = Project(projectdbfile=sys.argv[1])
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('mode', metavar='MODE', type=str, help="Mode of operation (interactive|simulate)")
+    parser.add_argument('--baseurl', metavar='BASEURL', type=str, dest="baseurl", default=DEF_BASEURL, help="Base URL for requests")
+    parser.add_argument('--logfile', metavar='LOGFILE', type=str, dest="logfile", default=DEF_LOGFILE, help="Log file path")
+    parser.add_argument('--loglevel', metavar='LOGLEVEL', type=int, dest="loglevel", default=DEF_LOGLEVEL, help="Log verbosity level")
+    parser.add_argument('--testfile', metavar='TESTFILE', type=str, dest="testfile", default=DEF_TESTFILE, help="Test data description file")
+    parser.add_argument('--dbfile', metavar='DBFILE', type=str, dest="dbfile", default=DEF_DBFILE, help="Projects DB file path")
+    parser.add_argument('--nusers', metavar='NUSERS', type=int, dest="nusers", default=DEF_NUSERS, help="Number of concurrent users (simulation mode)")
+    parser.add_argument('--nprocs', metavar='NPROCS', type=int, dest="nprocs", default=DEF_NPROCS, help="Number of concurrent processes (simulation mode)")
+    parser.add_argument('--mindelay', metavar='MINDELAY', type=float, dest="mindelay", default=DEF_MINDELAY, help="Minimum delay between user requests (simulation mode)")
+    parser.add_argument('--maxdelay', metavar='DURATION', type=float, dest="maxdelay", default=DEF_MAXDELAY, help="Maximum delay between user requests (simulation mode)")
+    args = parser.parse_args()
 
-    if len(sys.argv) < 3:
+    try:
+        import multiprocessing
+        POOL = multiprocessing.Pool(processes=args.nprocs)
+        def map(f, i):
+            return POOL.map(f, i, chunksize=1)
+    except ImportError:
+        pass
+
+    LOG = setuplog("PTESTER", args.logfile, args.loglevel, "admin")
+    with codecs.open(args.testfile, encoding="utf-8") as testfh:
+        testdata = json.load(testfh)
+
+    if args.mode.startswith("sim"):
+        LOG.info("Accessing Docker app server via: {}".format(args.baseurl))
+        LOG.info("Creating {} tests/users".format(args.nusers))
+        tests = []
+        t = Test(testdata, args.dbfile, baseurl=args.baseurl)
+        t.adminlin()
+        for i in range(args.nusers):
+            tdata = dict(testdata)
+            tdata["user"] = "user{}".format(str(i).zfill(2))
+            tdata["testid"] = i
+            t.adduser(username=tdata["user"])
+            tests.append(tdata)
+        LOG.info("Walking through {} tests {} procs".format(args.nusers, args.nprocs))
+        testresults = map(runtest, [(args.baseurl, tdata, args.dbfile, args.mindelay, args.maxdelay, args.logfile, args.loglevel) for tdata in tests])
+        LOG.info("Walkthrough results: {} of {} successful".format(len([flag for flag, _, __ in testresults if flag == True]), len(tests)))
+        LOG.info("Walkthrough failed for TIDs: {}".format(", ".join([str(teststate.testid) for flag, _, teststate in testresults if flag == False])))
+        #force logout all and delete
+        for flag, e, teststate in testresults:
+            LOG.info("tid:{} Logging out and deleting user: {}".format(teststate.testid, teststate.user))
+            LOG.info("tid:{} E-state: {}".format(teststate.testid, e))
+            try:
+                t.logout2(username=teststate.user, password=teststate.passw)
+            except RequestFailed:
+                t.logout2(username=teststate.user, password=teststate.passw_)
+            t.deluser(username=teststate.user)
+        #logout admin
+        t.adminlout2()
+    elif args.mode.startswith("int"):
+        t = Test(testdata, args.dbfile, baseurl=args.baseurl)
         try:
             while True:
                 cmd = raw_input("Enter command (type help for list)> ")
                 cmd = cmd.lower()
                 if cmd == "exit":
-                    proj.logout()
-                    proj.adminlout()
+                    t.logout2()
+                    t.adminlout2()
                     break
                 elif cmd in ["help", "list"]:
                     print("ADMINLIN - Admin login")
                     print("ADMINLOUT - Admin logout")
+                    print("ADMINLOUT2 - Admin logout (with username & password)")
                     print("ADDUSER - add new user\n")
+                    print("DELUSER - delete new user\n")
                     print("LOGIN - user login")
                     print("LOGOUT - user logout")
+                    print("LOGOUT2 - user logout (with username & password)")
                     print("CHANGEPASSWORD - change user user password")
                     print("CHANGEBACKPASSWORD - change user user password back")
                     print("LISTCATEGORIES - list project categories")
@@ -419,66 +541,15 @@ if __name__ == "__main__":
                     print("DIARIZEAUDIO2 - like DIARIZEAUDIO but withouth speech server (project stays locked)\n")
                     print("UNLOCKPROJECT - unlock project (can test this against DIARIZEAUDIO2)")
                     print("EXIT - quit")
-
                 else:
                     try:
-                        meth = getattr(proj, cmd)
+                        meth = getattr(t, cmd)
                         meth()
                     except Exception as e:
                         print('Error processing command:', e)
-
         except:
-            proj.logout()
-            proj.adminlout()
+            t.logout2()
+            t.adminlout2()
             print('')
     else:
-        if sys.argv[2].upper() == "ASSIGN":
-            proj.login()
-            proj.createproject()
-            proj.uploadaudio()
-            proj.saveproject()
-            proj.assigntasks()
-            proj.logout()
-        elif sys.argv[2].upper() == "ASSIGN_NOTASKS":
-            proj.login()
-            proj.createproject()
-            proj.uploadaudio()
-            proj.assigntasks()
-            proj.logout()
-        elif sys.argv[2].upper() == "DIARIZE_ASSIGN":
-            proj.login()
-            proj.createproject()
-            proj.uploadaudio()
-            proj.diarizeaudio()
-            proj.saveproject()
-            proj.assigntasks()
-            proj.logout()
-        elif sys.argv[2].upper() == "DIARIZE_ASSIGN_UPDATE":
-            proj.login()
-            proj.createproject()
-            proj.uploadaudio()
-            proj.diarizeaudio()
-            proj.saveproject()
-            proj.assigntasks()
-            proj.updateproject()
-            proj.logout()
-        elif sys.argv[2].upper() == "DIARIZE_ASSIGN_DELETE":
-            proj.login()
-            proj.createproject()
-            proj.uploadaudio()
-            proj.diarizeaudio()
-            proj.saveproject()
-            proj.assigntasks()
-            proj.deleteproject()
-            proj.logout()
-        elif sys.argv[2].upper() == "DIARIZE_DELETE":
-            proj.login()
-            proj.createproject()
-            proj.uploadaudio()
-            proj.diarizeaudio()
-            proj.saveproject()
-            proj.deleteproject()
-            proj.logout()
-        else:
-            print("UNKNOWN TASK: {}".format(sys.argv[2]))
-
+        parser.print_help()
