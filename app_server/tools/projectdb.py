@@ -25,6 +25,7 @@ if __name__ == "__main__":
     db_curs.execute("CREATE TABLE projects ({})".format(", ".join(["projectid VARCHAR(36) PRIMARY KEY",
                                                                    "projectname VARCHAR(32)",
                                                                    "category VARCHAR(36)",
+                                                                   "creator VARCHAR(30)",
                                                                    "username VARCHAR(30)",
                                                                    "audiofile VARCHAR(128)",
                                                                    "audiodur REAL",

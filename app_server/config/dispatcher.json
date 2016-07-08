@@ -38,9 +38,15 @@
 
 	    "/projects/listcategories" : { "method" : "service.projects.Projects.list_categories",
 					   "parameters" : ["token"] },
+	    "/projects/listlanguages" : { "method" : "service.projects.Projects.list_languages",
+					  "parameters" : ["token" ] },
 	    "/projects/createproject" : { "method" : "service.projects.Projects.create_project",
 					  "parameters" : ["token", "projectname", "category"] },
+	    "/projects/loadusers" : { "method" : "service.projects.Projects.get_users",
+					  "parameters" : ["token" ] },
 	    "/projects/listprojects" : { "method" : "service.projects.Projects.list_projects",
+					 "parameters" : ["token"] },
+	    "/projects/listcreatedprojects" : { "method" : "service.projects.Projects.list_created_projects",
 					 "parameters" : ["token"] },
 	    "/projects/loadproject" : { "method" : "service.projects.Projects.load_project",
 					"parameters" : ["token", "projectid"] },
@@ -95,7 +101,9 @@
 	    "/editor/unlocktask" : { "method" : "service.editor.Editor.unlock_task",
 				   "parameters" : ["token", "taskid", "projectid"] },
 	    "/editor/clearerror" : { "method" : "service.editor.Editor.clear_error",
-				   "parameters" : ["token", "taskid", "projectid"] }
+				   "parameters" : ["token", "taskid", "projectid"] },
+	    "/editor/loadusers" : { "method" : "service.projects.Editor.get_users",
+					  "parameters" : ["token" ] }
 
 	},
 

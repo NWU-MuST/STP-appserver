@@ -88,7 +88,10 @@ class Test:
                                 ("createproject", {"u_loggedin"}),
                                 ("deleteproject", {"u_loggedin", "u_hasprojects", "p_loaded"}),
                                 ("changepassword", {"u_loggedin"}),
+                                ("listcategories", {"u_loggedin"}),
+                                ("listlanguages", {"u_loggedin"}),
                                 ("listprojects", {"u_loggedin"}),
+                                ("loadusers", {"u_loggedin"}),
                                 ("loadproject", {"u_loggedin", "u_hasprojects", "p_unlocked"}),
                                 ("uploadaudio", {"u_loggedin", "u_hasprojects", "p_loaded", "p_unlocked", "p_unassigned"}),
                                 ("getaudio", {"u_loggedin", "u_hasprojects", "p_loaded", "p_hasaudio", "p_unlocked", "p_unassigned"}),
@@ -258,6 +261,24 @@ class Test:
         if result.status_code != 200:
             raise RequestFailed(result.text)
 
+    def listlanguages(self, token=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.token}
+        result = post("listlanguages", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+
+    def loadusers(self, token=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.token}
+        result = post("loadusers", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+
     def createproject(self, token=None, projectname=None, category=None):
         LOG.debug("ENTER")
         data = {"token": token or self.token,
@@ -284,6 +305,15 @@ class Test:
         LOG.debug("ENTER")
         data = {"token": token or self.token}
         result = post("listprojects", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+
+    def listcreatedprojects(self, token=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.token}
+        result = post("listcreatedprojects", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
@@ -407,10 +437,11 @@ class Test:
             raise RequestFailed(result.text)
         self.state["p_saved"] = True
 
-    def assigntasks(self, token=None, projectid=None):
+    def assigntasks(self, token=None, projectid=None, collator=None):
         LOG.debug("ENTER")
         data = {"token": token or self.token,
-                "projectid": projectid or self.pid}
+                "projectid": projectid or self.pid,
+                "collator": collator or self.user}
         result = post("assigntasks", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
@@ -530,8 +561,10 @@ if __name__ == "__main__":
                     print("CHANGEPASSWORD - change user user password")
                     print("CHANGEBACKPASSWORD - change user user password back")
                     print("LISTCATEGORIES - list project categories")
+                    print("LISTLANGUAGES - list languages")
                     print("CREATEPROJECT - create a new project")
                     print("LISTPROJECTS - list projects")
+                    print("LOADUSERS - load users")
                     print("LOADPROJECT - load projects")
                     print("UPLOADAUDIO - upload audio to project")
                     print("GETAUDIO - retrieve project audio")

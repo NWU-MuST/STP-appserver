@@ -38,8 +38,7 @@ TASKID_DIR_ZFILL = 3
 
 ## TODO: project manager and collator are the same and share UI
 ## FLOW: PM uploads and assigns task. The assignment re-assigns the project the collator
-## The PM can still view created tasks
-## The collator can push back assignment to PM
+## The PM can still view created projects
 
 def authlog(okaymsg):
     """This performs authentication (inserting `username` into function
@@ -95,6 +94,7 @@ class Projects(auth.UserAuth):
         #Provides: self._config and self.authdb
         auth.UserAuth.__init__(self, config_file)
         self._categories = self._config["categories"]
+        self._languages = self._config["languages"]
         self._speech = speechserv
         #DB connection setup:
         self.db = sqlite.connect(self._config['projectdb'], factory=ProjectDB)
@@ -104,7 +104,13 @@ class Projects(auth.UserAuth):
     def list_categories(self, request):
         """List Admin-created project categories
         """
-        return {'categories' : self._categories}
+        return {"categories" : self._categories}
+
+    @authlog("Returning list of languages")
+    def list_languages(self, request):
+        """Return languages
+        """
+        return {"languages" : self._languages}
 
     @authlog("Created new project")
     def create_project(self, request):
@@ -130,6 +136,7 @@ class Projects(auth.UserAuth):
             db.insert_project({"projectid": projectid,
                                "projectname": request["projectname"],
                                "category": request["category"],
+                               "creator": username,
                                "username": username,
                                "year": year,
                                "creation": time.time(),
@@ -138,13 +145,21 @@ class Projects(auth.UserAuth):
         LOG.info("Inserted new project: projectid={}".format(projectid))
         return {'projectid' : projectid}
 
-    @authlog("Returning list of projects")
+    @authlog("Returning list of owned projects")
     def list_projects(self, request):
         """List current projects owned by user
         """
         with self.db as db:
             projects = db.get_projects(where={"username": username})
-        return {'projects' : projects}
+        return {"projects" : projects }
+
+    @authlog("Returning list of created projects")
+    def list_created_projects(self, request):
+        """List current projects created by user
+        """
+        with self.db as db:
+            projects = db.get_projects(where={"creator": username})
+        return {"projects" : projects }
 
     @authlog("Deleted project")
     def delete_project(self, request):
@@ -171,7 +186,7 @@ class Projects(auth.UserAuth):
             project = db.get_project(request["projectid"],
                                      fields=["projectname", "category", "year"])
             tasks = db.get_tasks(request["projectid"],
-                                 fields=["editor", "collator", "start", "end", "language"]) #DEMIT: taskid, ownership?
+                                 fields=["taskid", "editor", "start", "end", "language"]) #DEMIT: taskid, ownership?
         return {'project' : project, 'tasks' : tasks}
 
     @authlog("Saved project")
@@ -184,7 +199,7 @@ class Projects(auth.UserAuth):
            `set_ownership`
         """
         #Check whether all necessary fields are in input for each task
-        infields = ("editor", "collator", "start", "end", "language")
+        infields = ("editor", "speaker", "start", "end", "language")
         fields = ("taskid", "projectid") + infields
         tasks = list(request["tasks"])
         for task in tasks:
@@ -245,7 +260,7 @@ class Projects(auth.UserAuth):
                 raise ConflictError("No tasks found to assign")
             #Make sure all required fields are set
             undefined = (None, "")
-            infields = ("taskid", "projectid", "editor", "collator", "start", "end", "language")
+            infields = ("taskid", "projectid", "editor", "speaker", "start", "end", "language")
             for task in tasks:
                 if not all(v not in undefined for k, v in task.iteritems() if k in infields):
                     raise BadRequestError("Not all necessary task fields are defined (use save_project() first)")
@@ -270,7 +285,7 @@ class Projects(auth.UserAuth):
             #Update fields and unlock project
             with self.db as db:
                 db.update_tasks(request["projectid"], tasks, fields=updatefields)
-                db.update_project(request["projectid"], data={"assigned": "Y"})
+                db.update_project(request["projectid"], data={"username": request["collator"], "assigned": "Y"})
                 db.unlock_project(request["projectid"])
             return 'Project tasks assigned!'
         except:
@@ -283,14 +298,13 @@ class Projects(auth.UserAuth):
                 db.unlock_project(request["projectid"], errstatus="assign_tasks")
             raise
 
-
     @authlog("Project updated")
     def update_project(self, request):
         """Update assignees and/or other project meta-info. Can only be run
            after task assignment.
         """
-        taskupdatefields = {"editor", "collator", "language", "ownership"}
-        projectupdatefields = {"projectname", "category"}
+        taskupdatefields = {"editor", "speaker", "language", "ownership"}
+        projectupdatefields = {"projectname", "category", "username"}
         projectdata = dict((k, request["project"][k]) for k in projectupdatefields if k in request["project"])
         #Check taskid in all tasks and taskids unique
         try:
@@ -676,7 +690,7 @@ class ProjectDB(sqlite.Connection):
     def create_tasktable(self, year):
         table_name = "T{}".format(year)
         query = ( "CREATE TABLE IF NOT EXISTS {} ".format(table_name) +\
-                  "( taskid INTEGER, projectid VARCHAR(36), editor VARCHAR(20), collator VARCHAR(20), "
+                  "( taskid INTEGER, projectid VARCHAR(36), editor VARCHAR(30), speaker VARCHAR(128), "
                   "start REAL, end REAL, language VARCHAR(20), "
                   "textfile VARCHAR(64), creation REAL, modified REAL, commitid VARCHAR(40), "
                   "ownership INTEGER, jobid VARCHAR(36), errstatus VARCHAR(128) )" )

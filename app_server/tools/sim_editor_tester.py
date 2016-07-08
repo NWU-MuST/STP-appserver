@@ -441,6 +441,20 @@ class Editor:
             LOG.error("username={}: gettext(): {}!".format(self.username, str(e)))
             return 500, None
 
+    def loadusers(self):
+        """
+            Return the registered users
+        """
+        try:
+            headers = {"Content-Type" : "application/json"}
+            data = {'token' : self.user_token}
+            res = requests.post(BASEURL + "editor/loadusers", headers=headers, data=json.dumps(data))
+            LOG.info("username={}: loadusers(): {}".format(self.username, res.text))
+            return res.status_code, res.text
+        except Exception as e:
+            LOG.error("username={}: loadusers(): {}!".format(self.username, str(e)))
+            return 500, None
+
     def taskdone(self):
         """
             Assign the task to collator
@@ -575,6 +589,7 @@ if __name__ == "__main__":
              "savetext" : ["recognize", "align", "savetext"],
             "gettext" : ["gettext", "getaudio", "savetext", "cleartext"],
             "getaudio" : ["gettext", "getaudio", "savetext", "cleartext"],
+            "loadusers" : ["gettext", "getaudio", "savetext", "cleartext"],
             "unlocktask" : ["loadtasks"],
             "clearerror" : ["unlocktask", "logout"],
             "cleartext" : ["diarize"],

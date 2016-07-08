@@ -85,7 +85,7 @@ class Admin(auth.UserAuth):
         users = dict()
         with sqlite.connect(self._config["target_authdb"]) as db_conn:
             db_curs = db_conn.cursor()
-            for entry in db_curs.execute("SELECT * FROM users"):
+            for entry in db_curs.execute("SELECT * FROM users").fetchall():
                 username, pwhash, salt, name, surname, email, tmppwhash = entry
                 users[username] = {"name": name, "surname": surname, "email": email}
         LOG.info("Returning user list")

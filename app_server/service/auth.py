@@ -164,7 +164,20 @@ class UserAuth(object):
         #TODO: NotImplementedError: At some point email this automatically to the user
         LOG.info("Temp password created: {}".format(username))
         return tmppw
-        
+
+    def get_users(self, request):
+        """Return all users
+        """
+        username = self.authdb.authenticate(request["token"])
+        users = dict()
+        with sqlite.connect(self._config["authdb"]) as db_conn:
+            db_curs = db_conn.cursor()
+            for entry in db_curs.execute("SELECT * FROM users").fetchall():
+                username, pwhash, salt, name, surname, email, tmppwhash = entry
+                users[username] = {"name": name, "surname": surname, "email": email}
+        LOG.info("Returning user list ({})".format(username))
+        return users
+
 
 class AuthDB(sqlite.Connection):
     def authenticate(self, token):
