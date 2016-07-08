@@ -166,22 +166,17 @@ class UserAuth(object):
         return tmppw
 
     def get_users(self, request):
+        """Return all users
         """
-            Return all users
-        """
+        username = self.authdb.authenticate(request["token"])
+        users = dict()
         with sqlite.connect(self._config["authdb"]) as db_conn:
             db_curs = db_conn.cursor()
-            db_curs.execute("SELECT username FROM users")
-            entry = db_curs.fetchall()
-            if entry is None:
-                NotFoundError("No users exist!")
-            else:
-                entry = map(dict, entry)
-            usernames = []
-            for usr in entry:
-                usernames.append(usr["username"])
-        LOG.info("Returning users")
-        return usernames
+            for entry in db_curs.execute("SELECT * FROM users").fetchall():
+                username, pwhash, salt, name, surname, email, tmppwhash = entry
+                users[username] = {"name": name, "surname": surname, "email": email}
+        LOG.info("Returning user list ({})".format(username))
+        return users
 
 
 class AuthDB(sqlite.Connection):

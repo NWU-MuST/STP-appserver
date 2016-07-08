@@ -38,8 +38,7 @@ TASKID_DIR_ZFILL = 3
 
 ## TODO: project manager and collator are the same and share UI
 ## FLOW: PM uploads and assigns task. The assignment re-assigns the project the collator
-## The PM can still view created tasks
-## The collator can push back assignment to PM
+## The PM can still view created projects
 
 def authlog(okaymsg):
     """This performs authentication (inserting `username` into function
@@ -106,6 +105,12 @@ class Projects(auth.UserAuth):
         """List Admin-created project categories
         """
         return {"categories" : self._categories}
+
+    @authlog("Returning list of languages")
+    def list_languages(self, request):
+        """Return languages
+        """
+        return {"languages" : self._languages}
 
     @authlog("Created new project")
     def create_project(self, request):
@@ -292,7 +297,6 @@ class Projects(auth.UserAuth):
             with self.db as db:
                 db.unlock_project(request["projectid"], errstatus="assign_tasks")
             raise
-
 
     @authlog("Project updated")
     def update_project(self, request):
@@ -540,16 +544,6 @@ class Projects(auth.UserAuth):
                 db.unlock_project(projectid, errstatus=data["errstatus"])
             LOG.info("FAIL: {}".format(e))
             raise
-
-    @authlog("Returning registered users")
-    def users(self, request):
-        return { "users" : self.authdb.get_users(request) }
-
-    @authlog("Returning list of languages")
-    def languages(self, request):
-        """Return languages
-        """
-        return {"languages" : self._languages}
 
 
 class ProjectDB(sqlite.Connection):

@@ -459,21 +459,21 @@ class Editor:
             LOG.error("username={}: gettext(): User not logged in!".format(self.username))
         print('')
 
-    def users(self):
+    def loadusers(self):
         """
             Return the registered users
         """
-        LOG.info("username={}: users(): Entering".format(self.username))
+        LOG.info("username={}: loadusers(): Entering".format(self.username))
         if self.user_token is not None and self.projectid is not None:
             headers = {"Content-Type" : "application/json"}
             data = {'token' : self.user_token}
-            res = requests.post(BASEURL + "editor/users", headers=headers, data=json.dumps(data))
+            res = requests.post(BASEURL + "editor/loadusers", headers=headers, data=json.dumps(data))
             print('SERVER SAYS:', res.text)
-            LOG.info("username={}: users: ".format(self.username), res.text)
+            LOG.info("username={}: loadusers: ".format(self.username), res.text)
             print(res.status_code)
         else:
             print("User not logged in!")
-            LOG.error("username={}: users(): User not logged in!".format(self.username))
+            LOG.error("username={}: loadusers(): User not logged in!".format(self.username))
         print('')
 
     def taskdone(self):
