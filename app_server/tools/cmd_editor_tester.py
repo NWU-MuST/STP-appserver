@@ -459,6 +459,23 @@ class Editor:
             LOG.error("username={}: gettext(): User not logged in!".format(self.username))
         print('')
 
+    def users(self):
+        """
+            Return the registered users
+        """
+        LOG.info("username={}: users(): Entering".format(self.username))
+        if self.user_token is not None and self.projectid is not None:
+            headers = {"Content-Type" : "application/json"}
+            data = {'token' : self.user_token}
+            res = requests.post(BASEURL + "editor/users", headers=headers, data=json.dumps(data))
+            print('SERVER SAYS:', res.text)
+            LOG.info("username={}: users: ".format(self.username), res.text)
+            print(res.status_code)
+        else:
+            print("User not logged in!")
+            LOG.error("username={}: users(): User not logged in!".format(self.username))
+        print('')
+
     def taskdone(self):
         """
             Assign the task to collator

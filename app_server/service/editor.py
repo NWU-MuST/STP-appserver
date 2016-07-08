@@ -616,6 +616,10 @@ class Editor(auth.UserAuth):
             LOG.error("Clear error fail: {}".format(e))
             raise
 
+    @authlog("Returning registered users")
+    def users(self, request):
+        return { "users" : self.authdb.get_users(request) }
+
 
 class EditorDB(sqlite.Connection):
     def lock(self):

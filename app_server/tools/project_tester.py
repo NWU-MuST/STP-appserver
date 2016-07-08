@@ -258,6 +258,24 @@ class Test:
         if result.status_code != 200:
             raise RequestFailed(result.text)
 
+    def languages(self, token=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.token}
+        result = post("languages", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+
+    def users(self, token=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.token}
+        result = post("users", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+
     def createproject(self, token=None, projectname=None, category=None):
         LOG.debug("ENTER")
         data = {"token": token or self.token,
@@ -284,6 +302,15 @@ class Test:
         LOG.debug("ENTER")
         data = {"token": token or self.token}
         result = post("listprojects", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+
+    def listcreatedprojects(self, token=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.token}
+        result = post("listcreatedprojects", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:

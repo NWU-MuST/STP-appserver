@@ -42,6 +42,8 @@
 					  "parameters" : ["token", "projectname", "category"] },
 	    "/projects/listprojects" : { "method" : "service.projects.Projects.list_projects",
 					 "parameters" : ["token"] },
+	    "/projects/listcreatedprojects" : { "method" : "service.projects.Projects.list_created_projects",
+					 "parameters" : ["token"] },
 	    "/projects/loadproject" : { "method" : "service.projects.Projects.load_project",
 					"parameters" : ["token", "projectid"] },
 	    "/projects/uploadaudio" : { "method" : "service.projects.Projects.upload_audio",
@@ -58,6 +60,10 @@
 					 "parameters" : ["token", "projectid"] },
 	    "/projects/unlockproject" : { "method" : "service.projects.Projects.unlock_project",
 					  "parameters" : ["token", "projectid"] },
+	    "/projects/languages" : { "method" : "service.projects.Projects.languages",
+					  "parameters" : ["token" ] },
+	    "/projects/users" : { "method" : "service.projects.Projects.users",
+					  "parameters" : ["token" ] },
 
 	    "/editor/admin/login" : { "method" : "service.editor.Admin.login",
 					"parameters" : ["username", "password"] },
@@ -95,7 +101,9 @@
 	    "/editor/unlocktask" : { "method" : "service.editor.Editor.unlock_task",
 				   "parameters" : ["token", "taskid", "projectid"] },
 	    "/editor/clearerror" : { "method" : "service.editor.Editor.clear_error",
-				   "parameters" : ["token", "taskid", "projectid"] }
+				   "parameters" : ["token", "taskid", "projectid"] },
+	    "/editor/users" : { "method" : "service.projects.Editor.users",
+					  "parameters" : ["token" ] }
 
 	},
 
