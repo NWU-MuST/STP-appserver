@@ -590,45 +590,24 @@ if __name__ == "__main__":
     edit = Editor()
 
     if len(sys.argv) < 2:
-        try:
-            while True:
-                cmd = raw_input("Enter command (type help for list)> ")
-                cmd = cmd.lower()
-                if cmd == "exit":
-                    edit.logout()
-                    edit.adminlout()
-                    break
-                elif cmd in ["help", "list"]:
-                    print("ADMINLIN - Admin login")
-                    print("ADMINLOUT - Admin logout")
-                    print("ADDUSER - add new user\n")
-                    print("LOGIN - user login")
-                    print("LOGOUT - user logout\n")
-                    print("LOADTASKS - load tasks belonging to user")
-                    print("GETAUDIO - return task audio")
-                    print("GETTEXT - return task text")
-                    print("SAVETEXT - save text to file")
-                    print("CLEARTEXT - remove text from file")
-                    print("TASKDONE - set the task is done")
-                    print("UNLOCKTASK - cancel a speech job")
-                    print("CLEARERROR - remove task error status")
-                    print("DIARIZE - submit diarize job")
-                    print("RECOGNIZE - submit recognize job")
-                    print("ALIGN - submit align job")
-                    print("EXIT - quit")
-                else:
-                    try:
-                        meth = getattr(edit, cmd)
-                        meth()
-                    except Exception as e:
-                        print('Error processing command:', e)
+        print("HELP")
+        print("Project specific - no user required")
+        print("P_ADDUSERS - Add project users")
+        print("ADDPROJECT - Add projects")
+        print("E_ADDUSERS - Add editor users\n")
 
-        except:
-            proj.logout()
-            proj.adminlout()
-            edit.logout()
-            edit.adminlout()
-            print('')
+        print("Editor specific - (need to provide a user name)")
+        print("GETAUDIO - return task audio")
+        print("GETTEXT - return task text")
+        print("SAVETEXT - save text to file")
+        print("CLEARTEXT - remove text from file")
+        print("TASKDONE - set the task is done")
+        print("UNLOCKTASK - cancel a speech job")
+        print("CLEARERROR - remove task error status")
+        print("DIARIZE - submit diarize job")
+        print("RECOGNIZE - submit recognize job")
+        print("ALIGN - submit align job")
+
 
     elif len(sys.argv) == 2:
         if sys.argv[1].upper() == "P_ADDUSERS":
