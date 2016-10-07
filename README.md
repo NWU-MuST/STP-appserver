@@ -6,9 +6,9 @@ WSGI RESTful application server that implements an API specific to the RSA Parli
 
 ### Clone source
 
-Cloned Parliament application server from Github [https://ntkleynhans@bitbucket.org/ntkleynhans/parliament_platform.git](https://ntkleynhans@bitbucket.org/ntkleynhans/parliament_platform.git)
+Cloned Parliament application server from BitBucket [https://bitbucket.org/ntkleynhans/parliament_platform.git](https://bitbucket.org/ntkleynhans/parliament_platform.git)
 ```
-$ git clone https://ntkleynhans@bitbucket.org/ntkleynhans/parliament_platform.git
+$ git clone https://bitbucket.org/ntkleynhans/parliament_platform.git
 ```
 
 ### Docker
@@ -66,12 +66,7 @@ $ mkdir -p ~/stp/
 $ ./app_server/tools/authdb.py ~/stp/projects.db
 ```
 
-Here we chose the `~/stp` location to store the databases.  
-This must be passed via the docker run command using the `-v` option:
-
-```
-$ docker run -d --name stp -v ~/stp:/mnt/stp -p 9999:80 stp_base:latest
-```
+Refer to `./install/README.md` on how to build and run docker image using these databases.
 
 ## TESTING
 

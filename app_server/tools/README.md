@@ -28,7 +28,7 @@ It runs in two modes: simulation and interactive
 In this mode the tester simulates a random work flow.
 
 ```
-./project_tester.py --testfile ptest01.json --dbfile ~/Desktop/stp/projects.db --mindelay 0.0 --maxdelay 0.0 --nusers 4 --nprocs 4 simulation
+./project_tester.py --testfile ptest01.json --dbfile ~/stp/projects.db --mindelay 0.0 --maxdelay 0.0 --nusers 4 --nprocs 4 simulation
 ```
 
 ## Interactive mode
@@ -198,7 +198,6 @@ $ ./sim_editor_tester.py P_ADDUSERS
 $ ./sim_editor_tester.py ADDPROJECT
 $ ./sim_editor_tester.py E_ADDUSERS
 $ ./sim_editor_tester.py SIMULATE
-
 ```
 
 ## cmd_editor_tester
