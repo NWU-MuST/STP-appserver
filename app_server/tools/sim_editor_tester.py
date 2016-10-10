@@ -219,7 +219,7 @@ class Project:
             segs = [19.96*x/segs[-1] for x in segs]
             tasks = []
             for n in range(task_no):
-                tmp = {"editor" : random.choice(self.users.keys()), "collator" : random.choice(self.users.keys()), "start" : segs[n], "end" : segs[n+1], "language" : gen_str(10)}
+                tmp = {"editor" : random.choice(self.users.keys()), "speaker" : random.choice(self.users.keys()), "start" : segs[n], "end" : segs[n+1], "language" : gen_str(10)}
                 tasks.append(tmp)
 
             project = {"projectname": gen_str(10)}
@@ -238,7 +238,7 @@ class Project:
         if self.user_token is not None and self.projectid is not None:
             LOG.info("Assigning tasks")
             headers = {"Content-Type" : "application/json"}
-            data = {"token": self.user_token, "projectid" : self.projectid}
+            data = {"token": self.user_token, "projectid" : self.projectid, "collator" : "random"}
             res = requests.post(BASEURL + "projects/assigntasks", headers=headers, data=json.dumps(data))
             print('assigntasks(): SERVER SAYS:', res.text)
             print(res.status_code)
@@ -259,7 +259,7 @@ class Editor:
         self.taskid = None
         self.projectid = None
 
-    def gen_users(self, user_number=20):
+    def gen_users(self, user_number=10):
         LOG.info("Generating {} users".format(user_number))
         for i in range(user_number):
             usr = 'usr{}'.format(str(i).zfill(3))
@@ -366,6 +366,7 @@ class Editor:
             data = {"token": self.user_token}
             res = requests.post(BASEURL + "editor/loadtasks", headers=headers, data=json.dumps(data))
             pkg = res.json()
+            print(res.text)
             if len(pkg['CANOPEN']) > 0:
                 self.this_task = random.choice(pkg['CANOPEN'])
                 self.taskid = self.this_task['taskid']
@@ -386,6 +387,7 @@ class Editor:
         """
         try:
             params = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid}
+            print(params)
             res = requests.get(BASEURL + "editor/getaudio", params=params)
             if res.status_code == 200:
                 with open('taskrange.ogg', 'wb') as f:
@@ -406,6 +408,7 @@ class Editor:
         try:
             headers = {"Content-Type" : "application/json"}
             data = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid, "text" : "Hello world!"}
+            print(data)
             res = requests.post(BASEURL + "editor/savetext", headers=headers, data=json.dumps(data))
             LOG.info("username={}: savetext(): {}".format(self.username, res.text))
             return res.status_code, res.text
@@ -420,6 +423,7 @@ class Editor:
         try:
             headers = {"Content-Type" : "application/json"}
             data = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid, "text" : ""}
+            print(data)
             res = requests.post(BASEURL + "editor/savetext", headers=headers, data=json.dumps(data))
             LOG.info("username={}: cleartext(): {}".format(self.username, res.text))
             return res.status_code, res.text
@@ -434,6 +438,7 @@ class Editor:
         try:
             headers = {"Content-Type" : "application/json"}
             data = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid}
+            print(data)
             res = requests.post(BASEURL + "editor/gettext", headers=headers, data=json.dumps(data))
             LOG.info("username={}: gettext(): {}".format(self.username, res.text))
             return res.status_code, res.text
@@ -628,7 +633,7 @@ if __name__ == "__main__":
 
         elif sys.argv[1].upper() == "SIMULATE":
             Pool = []
-            users = edit.gen_users(10)
+            users = edit.gen_users(5)
             for n, usr in enumerate(users.keys()):
                 work = Worker(Paths, usr, n)
                 work.start()
