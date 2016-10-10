@@ -9,6 +9,7 @@ __author__ = "Daniel van Niekerk"
 __email__ = "dvn.demitasse@gmail.com"
 
 import os
+import sys
 import argparse
 try:
     from sqlite3 import dbapi2 as sqlite
@@ -40,8 +41,11 @@ if __name__ == "__main__":
     parser.add_argument("rootpass", metavar="ROOTPASS", type=str, help="Password for default user 'root'.")
     args = parser.parse_args()
     outfn = args.outfn
-    
-    salt = bcrypt.gensalt(prefix=b"2a")
+
+    if (sys.version_info > (3, 0)):
+        salt = bcrypt.gensalt(prefix=b"2a")
+    else:
+        salt = bcrypt.gensalt()
     pwhash = bcrypt.hashpw(args.rootpass, salt)
     
     db_conn = create_new_db(outfn)

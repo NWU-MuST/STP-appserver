@@ -1,7 +1,7 @@
 BUILDING AN APPLICATION SERVER DOCKER IMAGE
 ===========================================
 
-This directory contains the files necessary to build a Docker image. To build place the `Dockerfile` and complete repository in a build location with structure as follows:
+This directory contains the files necessary to build a Docker image. To build, place the `Dockerfile` and complete repository in a build location with structure as follows:
 
 ```
 .
@@ -34,6 +34,12 @@ Set up two new authentication databases, for the _projects_ and _projects admin_
 ```bash
 python stp/app_server/tools/authdb.py ~/stp/projects_auth.db <rootpass>
 python stp/app_server/tools/authdb.py ~/stp/projects_admin_auth.db <rootpass>
+```
+
+Start simple speech server located in `~/stp/app_server/tools/`
+
+```
+$ ~/stp/app_server/tools/dummy_speech_server.py
 ```
 
 Run the docker image making sure to mount the host directory created above and designate a host port for usage (`9999` in this case):

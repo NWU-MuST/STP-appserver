@@ -4,22 +4,36 @@ WSGI RESTful application server that implements an API specific to the RSA Parli
 
 ## INSTALL
 
+Assuming Ubuntu 14.04/16.04:
+
 ### Clone source
 
 Cloned Parliament application server from BitBucket [https://bitbucket.org/ntkleynhans/parliament_platform.git](https://bitbucket.org/ntkleynhans/parliament_platform.git)
+
 ```
+$ sudo apt-get install git python-bcrypt
+$ mkdir work
+$ cd work
 $ git clone https://bitbucket.org/ntkleynhans/parliament_platform.git
 ```
 
 ### Docker
-Next step is to install Docker *(on ubuntu)*:
+Next step is to install Docker:
 ```
-$ apt-get install docker.io
+$ sudo apt-get install docker.io
 ```
+
+Add yourself to the docker group:
+```
+$ sudo gpasswd -a <your_user_name> docker
+```
+
+Log out and log in for group change to take effect
+
 
 **Change docker location (optional)**
 
-Change docker image location (*ubuntu*).
+Change docker image location.
 
 Stop docker service:
 ```
