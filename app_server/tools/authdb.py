@@ -9,7 +9,6 @@ __author__ = "Daniel van Niekerk"
 __email__ = "dvn.demitasse@gmail.com"
 
 import os
-import sys
 import argparse
 try:
     from sqlite3 import dbapi2 as sqlite
@@ -42,12 +41,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
     outfn = args.outfn
 
-    if (sys.version_info > (3, 0)):
+    try:
         salt = bcrypt.gensalt(prefix=b"2a")
-    else:
+    except:
         salt = bcrypt.gensalt()
     pwhash = bcrypt.hashpw(args.rootpass, salt)
-    
+
     db_conn = create_new_db(outfn)
     db_curs = db_conn.cursor()
     db_curs.execute("INSERT INTO users ( username, pwhash, salt, name, surname, email, tmppwhash ) VALUES (?,?,?,?,?,?,?)", ("root", pwhash, salt, None, None, None, None))

@@ -15,7 +15,7 @@
 
     "projectname": "masefield",
     "projectcat": "NCOP",
-    "audiofile": "/home/demitasse/workspace/stp_dockerbuild/stp/app_server/tools/tallship.ogg",
+    "audiofile": "./tallship.ogg",
     "audiodur": 5.154830,
     "pid": null,
 

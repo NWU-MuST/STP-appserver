@@ -63,6 +63,8 @@ class Project:
         self.admin_token = None
         self.projectid = None
         self.users = {}
+        self.test_audio = 'tallship.ogg'
+        self.test_audio_duration = 5.154830
 
     def gen_users(self, user_number=20):
         LOG.info("Generating {} users".format(user_number))
@@ -186,14 +188,14 @@ class Project:
     def uploadaudio(self):
         """
             Upload audio to project
-            Requires test.ogg to be located in current location
+            Requires 'tallship.ogg' to be located in current location
         """
-        if not os.path.exists('test.ogg'):
-            print('Cannot run UPLOADAUDIO as "test.ogg" does not exist in current path')
+        if not os.path.exists(self.test_audio):
+            print('Cannot run UPLOADAUDIO as "tallship.ogg" does not exist in current path')
             return
 
         if self.user_token is not None and self.projectid is not None:
-            files = {'file' : open('test.ogg', 'rb'), 'filename' : 'test.ogg', 'token' : self.user_token, 'projectid' : self.projectid}
+            files = {'file' : open(self.test_audio, 'rb'), 'filename' : self.test_audio, 'token' : self.user_token, 'projectid' : self.projectid}
             res = requests.post(BASEURL + "projects/uploadaudio", files=files)
             print('uploadaudio(): SERVER SAYS:', res.text)
             print(res.status_code)
@@ -216,7 +218,7 @@ class Project:
             for n in range(task_no):
                 segs.append(random.uniform(1,100))
             segs.sort()
-            segs = [19.96*x/segs[-1] for x in segs]
+            segs = [self.test_audio_duration*x/segs[-1] for x in segs]
             tasks = []
             for n in range(task_no):
                 tmp = {"editor" : random.choice(self.users.keys()), "speaker" : random.choice(self.users.keys()), "start" : segs[n], "end" : segs[n+1], "language" : gen_str(10)}
@@ -300,7 +302,9 @@ class Editor:
         try:
             headers = {"Content-Type" : "application/json"}
             data = {"username": "root", "password": "123456"}
+            print('ADMINLIN:', data)
             res = requests.post(BASEURL + "editor/admin/login", headers=headers, data=json.dumps(data))
+            print('SERVER SAYS:', res.text)
             pkg = res.json()
             self.admin_token = pkg['token']
             return res.status_code, pkg["token"]
@@ -315,7 +319,9 @@ class Editor:
         try:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.admin_token}
+            print('ADMINLOUT:', data)
             res = requests.post(BASEURL + "editor/admin/logout", headers=headers, data=json.dumps(data))
+            print('SERVER SAYS:', res.text)
             self.admin_token = None
             return res.status_code, None
         except Exception as e:
@@ -350,7 +356,9 @@ class Editor:
                 headers = {"Content-Type" : "application/json"}
                 data = {"token": self.admin_token, "username": self.users[user]["username"], "password": self.users[user]["password"],
                  "name": self.users[user]["name"], "surname": self.users[user]["surname"], "email": self.users[user]["email"]}
+                print('ADDUSER:', data)
                 res = requests.post(BASEURL + "editor/admin/adduser", headers=headers, data=json.dumps(data))
+                print('SERVER SAYS:', res.text)
                 LOG.info("username={}: adduser(): SERVER SAYS:".format("root", res.text))
                 return res.status_code, res.text
         except Exception as e:

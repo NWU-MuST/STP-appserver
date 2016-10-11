@@ -14,7 +14,9 @@ This directory contains the files necessary to build a Docker image. To build, p
     `-- install
 ```
 
-and run:
+Edit `FSUID` variable found in `Dockerfile`, if needed. This should be the same as your host system UID.
+
+To build the docker image run:
 
 ```bash
 docker build -t stp_base .
@@ -36,10 +38,10 @@ python stp/app_server/tools/authdb.py ~/stp/projects_auth.db <rootpass>
 python stp/app_server/tools/authdb.py ~/stp/projects_admin_auth.db <rootpass>
 ```
 
-Start simple speech server located in `~/stp/app_server/tools/`
+Open another terminal and start simple speech server located in `~/stp/app_server/tools/`
 
 ```
-$ ~/stp/app_server/tools/dummy_speech_server.py
+$ ./dummy_speech_server.py
 ```
 
 Run the docker image making sure to mount the host directory created above and designate a host port for usage (`9999` in this case):

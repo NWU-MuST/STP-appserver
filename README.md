@@ -14,10 +14,11 @@ Cloned Parliament application server from BitBucket [https://bitbucket.org/ntkle
 $ sudo apt-get install git python-bcrypt
 $ mkdir work
 $ cd work
-$ git clone https://bitbucket.org/ntkleynhans/parliament_platform.git
+$ git clone https://bitbucket.org/ntkleynhans/parliament_platform.git stp
+$ ln -s stp/install/Dockerfile
 ```
 
-### Docker
+### Docker installation
 Next step is to install Docker:
 ```
 $ sudo apt-get install docker.io
@@ -70,17 +71,21 @@ Setup authentication databases using `./app_server/tools/authdb.py`
 $ mkdir ~/stp
 $ ./app_server/tools/authdb.py ~/stp/editor_admin_auth.db
 $ ./app_server/tools/authdb.py ~/stp/editor_auth.db
+```
+
+The authentication databases below should have been created when following the docker build image README.
+But are included here for completeness.  
+```
 $ ./app_server/tools/authdb.py ~/stp/projects_admin_auth.db
 $ ./app_server/tools/authdb.py ~/stp/projects_auth.db
 ```
+
 Setup project databases using `./app_server/tools/projectdb.py`
 
 ```
 $ mkdir -p ~/stp/
 $ ./app_server/tools/authdb.py ~/stp/projects.db
 ```
-
-Refer to `./install/README.md` on how to build and run docker image using these databases.
 
 ## TESTING
 
@@ -91,3 +96,4 @@ Testing tools are located in `./app_server/tools/`
 * cmd_editor_tester.py - One-shot editor interface tester
 
 For more information see `./app_server/tools/README.md`
+
