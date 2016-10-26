@@ -18,6 +18,18 @@ $ git clone https://bitbucket.org/ntkleynhans/parliament_platform.git stp
 $ ln -s stp/install/Dockerfile
 ```
 
+## Development version
+The development version launches a minimal speech server inside the docker container.
+To use this version link to the following Docker file:
+
+```
+$ sudo apt-get install git python-bcrypt
+$ mkdir work
+$ cd work
+$ git clone https://bitbucket.org/ntkleynhans/parliament_platform.git stp
+$ ln -s stp/install/Dockerfile.dev Dockerfile
+```
+
 ### Docker installation
 Next step is to install Docker:
 ```
