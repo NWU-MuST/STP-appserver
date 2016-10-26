@@ -60,6 +60,7 @@ sudo docker start
 
 Build the application server Docker image.
 For more instructions see `./install/README.md`
+A developmental version is also avaliable: see `./install/README.dev.md`
 
 ### Create databases
 

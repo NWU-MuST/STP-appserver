@@ -18,11 +18,12 @@ import json
 import socket
 
 #Hack to get IP:
-s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-s.connect(("gmail.com",80))
-host_ip = s.getsockname()[0]
-s.close()
+#s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+#s.connect(("gmail.com",80))
+#host_ip = s.getsockname()[0]
+#s.close()
 
+host_ip = 'localhost'
 HOST_NAME = host_ip # !!!REMEMBER TO CHANGE THIS!!!
 PORT_NUMBER = 9950 # Maybe set this to 9000.
 
