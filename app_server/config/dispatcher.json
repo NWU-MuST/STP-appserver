@@ -126,7 +126,7 @@
 
     "speechserver" : {
         "username" : "appserver",
-        "password" : "VFKNZd4mD832VDcV",
+        "password" : "tT5uV2vju9ECTpGb",
         "login" : "jobs/login",
         "logout" : "jobs/logout"
     }   

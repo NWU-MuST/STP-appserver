@@ -459,12 +459,12 @@ class Projects(auth.UserAuth):
         #Make job request:
         try:
             # TEMPORARILY COMMENTED OUT FOR TESTING WITHOUT SPEECHSERVER:
-            # jobreq = {"token" : request["token"], "getaudio": os.path.join(APPSERVER, outurl),
-            #           "putresult": os.path.join(APPSERVER, inurl), "service" : "diarize", "subsystem" : "default"}
-            # LOG.debug(os.path.join(SPEECHSERVER, self._config["speechservices"]["diarize"]))
-            # reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]["diarize"]), data=json.dumps(jobreq))
-            # reqstatus = reqstatus.json()
-            reqstatus = {"jobid": auth.gen_token()} #DEMIT: dummy call for testing!
+            jobreq = {"token" : request["token"], "getaudio": os.path.join(APPSERVER, outurl),
+                      "putresult": os.path.join(APPSERVER, inurl), "service" : "diarize", "subsystem" : "default"}
+            LOG.debug(os.path.join(SPEECHSERVER, self._config["speechservices"]["diarize"]))
+            reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]["diarize"]), data=json.dumps(jobreq))
+            reqstatus = reqstatus.json()
+            #reqstatus = {"jobid": auth.gen_token()} #DEMIT: dummy call for testing!
             LOG.debug("Diarize: reqstatus={}".format(reqstatus))
             #Check reqstatus from SpeechServ OK?
             if not "jobid" in reqstatus:

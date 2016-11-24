@@ -11,6 +11,7 @@ import os
 import requests
 import logging
 import codecs
+import string
 from functools import wraps
 from types import FunctionType
 
@@ -397,7 +398,7 @@ class Editor(auth.UserAuth):
         #TEMPORARILY COMMENTED OUT FOR TESTING WITHOUT SPEECHSERVER:
         #TODO: fix editor reference
         jobreq = {"token" : self._speech.token(), "getaudio": os.path.join(APPSERVER, "editor", outurl),
-                   "postresult": os.path.join(APPSERVER, "editor", inurl)}
+                   "putresult": os.path.join(APPSERVER, "editor", inurl)}
         jobreq["service"] = service
         jobreq["subsystem"] = subsystem
         jobreq.update(parameters)
@@ -474,8 +475,7 @@ class Editor(auth.UserAuth):
         except Exception as e:
             LOG.error("Request incoming resource failed: {}".format(e))
 
-
-    def _incoming_base(self, data, projectid, taskid):
+    def _incoming_base(self, data, projectid, taskid, service_name):
         """
         """
         try:
@@ -485,10 +485,17 @@ class Editor(auth.UserAuth):
                 if not year:
                     raise ConflictError("(projectid={}) Project no longer exists".format(projectid))
 
+            textfile = db.get_task(projectid, taskid, year, fields=["textfile"])["textfile"]
+            if textfile is None or len(textfile) == 0:
+                raise NotFoundError("This task has no text file")
+            self._test_read(textfile)
+
             if "errstatus" in data:
                 if len(data["errstatus"]) != 0:
+                    self._append_to_textfile(projectid, taskid, textfile, "ERROR: Speech job fail! {}".format(data["errstatus"]))
                     raise Exception("Speech job failed: (Project ID: {}, Task ID: {})".format(projectid, taskid))
             if "CTM" not in data:
+                self._append_to_textfile(projectid, taskid, textfile, "ERROR: Speech job fail! NO CTM from output!!")
                 raise Exception("No CTM found in data: (Project ID: {}, Task ID: {})".format(projectid, taskid))
 
             with self.db as db:
@@ -496,12 +503,14 @@ class Editor(auth.UserAuth):
                 if not jobid:
                     raise ConflictError("No job expected (Project ID: {}, Task ID: {})".format(projectid, taskid))
 
-                textfile = db.get_task(projectid, taskid, year, fields=["textfile"])["textfile"]
-                if textfile is None or len(textfile) == 0:
-                    raise NotFoundError("This task has no text file")
-                self._test_read(textfile)
-
-                ctm = self._ctm_editor(data["CTM"], textfile)
+                if service_name == "diarize":
+                    ctm = self._ctm_editor_diarize(data["CTM"], textfile)
+                elif service_name == "recognize":
+                    ctm = self._ctm_editor_recognize(data["CTM"], textfile)
+                elif service_name == "align":
+                    ctm = self._ctm_editor_align(data["CTM"], textfile)
+                else:
+                    raise Exception("Unknown service name: {}".format(service_name))
 
                 try: # Handle repo errors
                     repo.check(os.path.dirname(textfile))
@@ -528,25 +537,74 @@ class Editor(auth.UserAuth):
                     db.set_errstatus(projectid, taskid, year, "{}".format(e))
                 db.set_jobid(projectid, taskid, year, None)
 
+    def _append_to_textfile(self, projectid, taskid, textfile, text):
+        """
+            Append error message textfile
+            so user knowns what is going on
+        """
+        try: # Handle repo errors
+            out = "<p><font color='red'> {} <font></p>".format(text)
+            repo.check(os.path.dirname(textfile))
+            with codecs.open(textfile, "a", "utf-8") as f:
+                f.write(out)
+            commitid, modified = repo.commit(os.path.dirname(textfile), os.path.basename(textfile), "Changes saved")
+            db.save_text(projectid, taskid, year, commitid, modified)
+            db.set_jobid(projectid, taskid, year, None)
+            db.set_errstatus(projectid, taskid, year, None)
+            LOG.info("Appending error message to textfile, project ID: {}, Task ID: {}".format(projectid, taskid))
+        except Exception as e:
+            raise
+
     def _incoming_diarize(self, data, projectid, taskid):
         """
             Diarize wrapper
         """
-        self._incoming_base(data, projectid, taskid)
+        self._incoming_base(data, projectid, taskid, "diarize")
 
     def _incoming_recognize(self, data, projectid, taskid):
         """
             Recognize wrapper
         """
-        self._incoming_base(data, projectid, taskid)
+        self._incoming_base(data, projectid, taskid, "recognize")
 
     def _incoming_align(self, data, projectid, taskid):
         """
             Alignment wrapper
         """
-        self._incoming_base(data, projectid, taskid)
+        self._incoming_base(data, projectid, taskid, "align")
 
-    def _ctm_editor(self, ctm, textfile):
+    def _ctm_editor_diarize(self, ctm, textfile):
+        """
+            Convert the speech server output CTM format to editor format
+        """
+        try:
+            LOG.info("CTM parsing diarization mode")
+            template = '<p><time datetime="$raw_time" style="background-color: #AAAAAA;" type="mark">$display_time</time></p>'
+            raw = ctm.splitlines()
+            out = []
+            for line in raw:
+                (tag, channel, start, end, text) = line.split()
+                raw_time = float(start)
+                display_time = time.strftime('%H:%M:%S', time.gmtime(raw_time))
+                out.append(string.Template(template, {"raw_time" : raw_time, "display_time" : display_time}))
+                out.append("")
+                out.append(text.replace("<","{").replace(">","}"))
+                out.append("")
+
+            return "\n".join(out)
+        except Exception as e:
+            raise e
+
+    def _ctm_editor_recognize(self, ctm, textfile):
+        """
+            Convert the speech server output CTM format to editor format
+        """
+        #segments = [map(float, line.split()) for line in ctm.splitlines()]
+        #segments.sort(key=lambda x:x[0]) #by starttime
+        LOG.info("CTM parsing successful..")
+        return ctm
+
+    def _ctm_editor_align(self, ctm, textfile):
         """
             Convert the speech server output CTM format to editor format
         """
