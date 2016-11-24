@@ -294,12 +294,13 @@ class Editor(auth.UserAuth):
             if task["textfile"] is None or len(task["textfile"]) == 0:
                 raise NotFoundError("This task has no text file")
 
-            if os.path.getsize(task["textfile"]) == 0:
-                raise BadRequestError("Cannot run recognize since the document is empty!")
+            #if os.path.getsize(task["textfile"]) == 0:
+            #    raise BadRequestError("Cannot run recognize since the document is empty!")
 
             self._test_read(task["textfile"])
 
-            params = self._recognize_segments(task["textfile"])
+            #params = self._recognize_segments(task["textfile"])
+            params = {}
             params["language"] = "English"
             request["service"] = "recognize"
 
@@ -467,8 +468,7 @@ class Editor(auth.UserAuth):
                 if not row["servicetype"] in self._config["speechservices"]["services"]:
                     raise Exception("Service type '{}' not defined in AppServer".format(row["servicetype"]))
 
-                handler = getattr(self, "_incoming_{}".format(row["servicetype"]))
-                handler(data, row["projectid"], row["taskid"])
+                self._incoming_base(data, row["projectid"], row["taskid"], row["servicetype"])
 
                 LOG.info("Incoming data processed for project ID: {}, task ID: {}".format(row["projectid"], row["taskid"]))
             return "Request successful!"
@@ -477,17 +477,23 @@ class Editor(auth.UserAuth):
 
     def _incoming_base(self, data, projectid, taskid, service_name):
         """
+            Basic incoming data processor
+            Redirect based on service type
+            Save result to text file
         """
         try:
-            LOG.debug("Speech processing incoming diarize (Project ID: {}, Task ID: {})".format(projectid, taskid))
+            LOG.debug("Speech processing incoming {} (Project ID: {}, Task ID: {})".format(service_name, projectid, taskid))
             with self.db as db:
                 year = db.get_project(projectid, fields=["year"])["year"]
                 if not year:
                     raise ConflictError("(projectid={}) Project no longer exists".format(projectid))
+                jobid = db.get_task(projectid, taskid, year, fields=["jobid"])["jobid"]
+                if not jobid:
+                    raise ConflictError("No job expected (Project ID: {}, Task ID: {})".format(projectid, taskid))
 
-            textfile = db.get_task(projectid, taskid, year, fields=["textfile"])["textfile"]
-            if textfile is None or len(textfile) == 0:
-                raise NotFoundError("This task has no text file")
+                textfile = db.get_task(projectid, taskid, year, fields=["textfile"])["textfile"]
+                if textfile is None or len(textfile) == 0:
+                    raise NotFoundError("This task has no text file")
             self._test_read(textfile)
 
             if "errstatus" in data:
@@ -498,31 +504,24 @@ class Editor(auth.UserAuth):
                 self._append_to_textfile(projectid, taskid, textfile, "ERROR: Speech job fail! NO CTM from output!!")
                 raise Exception("No CTM found in data: (Project ID: {}, Task ID: {})".format(projectid, taskid))
 
+            if service_name == "diarize":
+                ctm = self._ctm_editor_diarize(data["CTM"], textfile)
+            elif service_name == "recognize":
+                ctm = self._ctm_editor_recognize(data["CTM"], textfile)
+            elif service_name == "align":
+                ctm = self._ctm_editor_align(data["CTM"], textfile)
+            else:
+                raise Exception("Unknown service name: {}".format(service_name))
+
             with self.db as db:
-                jobid = db.get_task(projectid, taskid, year, fields=["jobid"])["jobid"]
-                if not jobid:
-                    raise ConflictError("No job expected (Project ID: {}, Task ID: {})".format(projectid, taskid))
-
-                if service_name == "diarize":
-                    ctm = self._ctm_editor_diarize(data["CTM"], textfile)
-                elif service_name == "recognize":
-                    ctm = self._ctm_editor_recognize(data["CTM"], textfile)
-                elif service_name == "align":
-                    ctm = self._ctm_editor_align(data["CTM"], textfile)
-                else:
-                    raise Exception("Unknown service name: {}".format(service_name))
-
-                try: # Handle repo errors
-                    repo.check(os.path.dirname(textfile))
-                    with codecs.open(textfile, "w", "utf-8") as f:
-                        f.write(ctm)
-                    commitid, modified = repo.commit(os.path.dirname(textfile), os.path.basename(textfile), "Changes saved")
-                    db.save_text(projectid, taskid, year, commitid, modified)
-                    db.set_jobid(projectid, taskid, year, None)
-                    db.set_errstatus(projectid, taskid, year, None)
-                    LOG.info("Speech processing result received successfully for project ID: {}, Task ID: {}".format(projectid, taskid))
-                except Exception as e:
-                    raise
+                repo.check(os.path.dirname(textfile))
+                with codecs.open(textfile, "w", "utf-8") as f:
+                    f.write(ctm)
+                commitid, modified = repo.commit(os.path.dirname(textfile), os.path.basename(textfile), "Changes saved")
+                db.save_text(projectid, taskid, year, commitid, modified)
+                db.set_jobid(projectid, taskid, year, None)
+                db.set_errstatus(projectid, taskid, year, None)
+                LOG.info("Speech processing result received successfully for project ID: {}, Task ID: {}".format(projectid, taskid))
 
         except Exception as e:
             LOG.error("Speech processing failure: {}".format(e))
@@ -543,35 +542,18 @@ class Editor(auth.UserAuth):
             so user knowns what is going on
         """
         try: # Handle repo errors
-            out = "<p><font color='red'> {} <font></p>".format(text)
-            repo.check(os.path.dirname(textfile))
-            with codecs.open(textfile, "a", "utf-8") as f:
-                f.write(out)
-            commitid, modified = repo.commit(os.path.dirname(textfile), os.path.basename(textfile), "Changes saved")
-            db.save_text(projectid, taskid, year, commitid, modified)
-            db.set_jobid(projectid, taskid, year, None)
-            db.set_errstatus(projectid, taskid, year, None)
-            LOG.info("Appending error message to textfile, project ID: {}, Task ID: {}".format(projectid, taskid))
+            with self.db as db:
+                out = "<p><font color='red'> {} <font></p>".format(text)
+                repo.check(os.path.dirname(textfile))
+                with codecs.open(textfile, "a", "utf-8") as f:
+                    f.write(out)
+                commitid, modified = repo.commit(os.path.dirname(textfile), os.path.basename(textfile), "Changes saved")
+                db.save_text(projectid, taskid, year, commitid, modified)
+                db.set_jobid(projectid, taskid, year, None)
+                db.set_errstatus(projectid, taskid, year, None)
+                LOG.info("Appending error message to textfile, project ID: {}, Task ID: {}".format(projectid, taskid))
         except Exception as e:
             raise
-
-    def _incoming_diarize(self, data, projectid, taskid):
-        """
-            Diarize wrapper
-        """
-        self._incoming_base(data, projectid, taskid, "diarize")
-
-    def _incoming_recognize(self, data, projectid, taskid):
-        """
-            Recognize wrapper
-        """
-        self._incoming_base(data, projectid, taskid, "recognize")
-
-    def _incoming_align(self, data, projectid, taskid):
-        """
-            Alignment wrapper
-        """
-        self._incoming_base(data, projectid, taskid, "align")
 
     def _ctm_editor_diarize(self, ctm, textfile):
         """
@@ -580,17 +562,15 @@ class Editor(auth.UserAuth):
         try:
             LOG.info("CTM parsing diarization mode")
             template = '<p><time datetime="$raw_time" style="background-color: #AAAAAA;" type="mark">$display_time</time></p>'
-            raw = ctm.splitlines()
             out = []
-            for line in raw:
+            for line in ctm.splitlines():
                 (tag, channel, start, end, text) = line.split()
                 raw_time = float(start)
                 display_time = time.strftime('%H:%M:%S', time.gmtime(raw_time))
-                out.append(string.Template(template, {"raw_time" : raw_time, "display_time" : display_time}))
+                out.append(string.Template(template).substitute({"raw_time" : raw_time, "display_time" : display_time}))
                 out.append("")
                 out.append(text.replace("<","{").replace(">","}"))
                 out.append("")
-
             return "\n".join(out)
         except Exception as e:
             raise e
@@ -599,10 +579,26 @@ class Editor(auth.UserAuth):
         """
             Convert the speech server output CTM format to editor format
         """
-        #segments = [map(float, line.split()) for line in ctm.splitlines()]
-        #segments.sort(key=lambda x:x[0]) #by starttime
-        LOG.info("CTM parsing successful..")
-        return ctm
+        try:
+            LOG.info("CTM parsing recognize mode")
+            template = '<time datetime="$raw_time">$word'
+            template_conf = '<time datetime="$raw_time"><conf style="background-color: $color">$word</conf>'
+            out = ["<p>"]
+            for line in ctm.splitlines():
+                (tag, channel, start, end, word, conf) = line.split()
+                raw_time = float(start)
+                conf = float(conf)
+                if conf == 1.0:
+                    out.append(string.Template(template).substitute({"raw_time" : raw_time, "word" : word.replace("<","{").replace(">","}")}))
+                elif conf > 0.7:
+                    out.append(string.Template(template_conf).substitute({"raw_time" : raw_time, "color" : "#FFA500", "word" : word.replace("<","{").replace(">","}")}))
+                else:
+                    out.append(string.Template(template_conf).substitute({"raw_time" : raw_time, "color" : "#FF0000", "word" : word.replace("<","{").replace(">","}")}))
+            out.append("</p>")
+            out.append("\n")
+            return " ".join(out)
+        except Exception as e:
+            raise e
 
     def _ctm_editor_align(self, ctm, textfile):
         """
