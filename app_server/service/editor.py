@@ -302,7 +302,7 @@ class Editor(auth.UserAuth):
             params["language"] = "English"
             request["service"] = "recognize"
 
-            return self._speech_job(request, project, task, "recognize", "sgmm", params)
+            return self._speech_job(request, project, task, "recognize", "en_ZA_16000", params)
         except Exception as e:
             LOG.error("Recognize audio failed: {}".format(e))
             with self.db as db:
@@ -350,7 +350,7 @@ class Editor(auth.UserAuth):
             params = self._align_segments(task["textfile"])
             params["language"] = "English"
             request["service"] = "align"
-            return self._speech_job(request, project, task, "align", "sgmm", params)
+            return self._speech_job(request, project, task, "align", "en_ZA_16000", params)
         except Exception as e:
             LOG.error("Align audio failed: {}".format(e))
             with self.db as db:
@@ -397,7 +397,7 @@ class Editor(auth.UserAuth):
         #TEMPORARILY COMMENTED OUT FOR TESTING WITHOUT SPEECHSERVER:
         #TODO: fix editor reference
         jobreq = {"token" : self._speech.token(), "getaudio": os.path.join(APPSERVER, "editor", outurl),
-                   "putresult": os.path.join(APPSERVER, "editor", inurl)}
+                   "postresult": os.path.join(APPSERVER, "editor", inurl)}
         jobreq["service"] = service
         jobreq["subsystem"] = subsystem
         jobreq.update(parameters)

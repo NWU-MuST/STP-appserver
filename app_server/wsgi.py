@@ -11,6 +11,7 @@ import logging
 import logging.handlers
 import subprocess
 import datetime
+import math
 
 from dispatcher import Dispatch
 from service.httperrs import *
@@ -71,9 +72,12 @@ def fix_oggsplt_time(realtime):
     dt = datetime.timedelta(seconds=float(realtime))
     dts = str(dt)
     (hour, minute, second) = dts.split(":")
-    minute = 60.0 * float(hour) + float(minute)
-    second = float(second)
+    minute = int(60.0 * float(hour) + float(minute))
+    second = int(math.ceil(float(second)))
     return "{}.{}".format(minute, second)
+
+ALLOW = [("Access-Control-Allow-Origin", "*"), ("Access-Control-Allow-Methods", "POST, PUT, GET, OPTIONS"),
+        ("Access-Control-Allow-Headers", "Content-Type") ,("Access-Control-Max-Age", "86400"), ('Content-Type','application/json')]
 
 #ENTRY POINT
 def application(env, start_response):
@@ -101,20 +105,26 @@ def application(env, start_response):
                     raise RuntimeError("Cannot supply task's audio data!")
 
             response_header = [('Content-Type', str(d["mime"])), ('Content-Length', str(len(data)))]
-            start_response('200 OK', response_header)
+            start_response('200 OK', response_header + ALLOW)
             return [data]
 
         elif env['REQUEST_METHOD'] == 'POST':
             d = router.post(env)
             response, response_header = build_json_response(d)
-            start_response('200 OK', response_header)
+            start_response('200 OK', response_header + ALLOW)
             return [response]
 
         elif env['REQUEST_METHOD'] == 'PUT':
             d = router.put(env)
             response, response_header = build_json_response(d)
-            start_response('200 OK', response_header)
+            start_response('200 OK', response_header + ALLOW)
             return [response]
+
+        elif env['REQUEST_METHOD'] == 'OPTIONS':
+            response_header = [("Access-Control-Allow-Origin", "*"), ("Access-Control-Allow-Methods", "POST, PUT, GET, OPTIONS"), 
+            ("Access-Control-Allow-Headers", "Content-Type") ,("Access-Control-Max-Age", "86400")]
+            start_response('200 OK', response_header)
+            return []
 
         else:
             raise MethodNotAllowedError("Supported methods are: GET, POST or PUT")

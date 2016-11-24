@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y apache2 libapache2-mod-proxy-uwsgi uwsg
 #Configure Apache to forward requests (uWSGI)
 COPY stp/install/* /etc/apache2/sites-available/
 RUN patch /etc/apache2/sites-available/000-default.conf /etc/apache2/sites-available/000-default.conf.patch
-RUN a2enmod proxy
+RUN a2enmod proxy headers
 
 #Setup user and source code for platform
 # IF NEEDED: Change FSUID to harmonize with host system user's UID (mounted file system)

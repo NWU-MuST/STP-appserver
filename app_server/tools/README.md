@@ -36,8 +36,8 @@ In this mode the tester simulates a random work flow.
 When run you'll get the following output:
 
 ```
-$ ./project_tester.py interactive
-2016-10-06 15:04:54,828 [INFO] PTESTER on tid:admin in __init__(): SEED: None
+$ /project_tester.py --testfile ptest01.json --dbfile ~/stp/projects.db interactive
+2016-10-26 17:54:13,133 [INFO] PTESTER on tid:admin in __init__(): SEED: None
 Enter command (type help for list)>
 ```
 
