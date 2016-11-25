@@ -587,7 +587,7 @@ class Editor(auth.UserAuth):
             for line in ctm.splitlines():
                 (tag, channel, start, end, word, conf) = line.split()
                 (spk, seg_start, seg_end) = tag.split("_")
-                raw_time = float(start) + (float(int(seg_start)) / 1000.0)
+                raw_time = float(start) + (float(int(seg_start)) / 100.0)
                 conf = float(conf)
                 if conf == 1.0:
                     out.append(string.Template(template).substitute({"raw_time" : raw_time, "word" : word.replace("<","{").replace(">","}")}))
