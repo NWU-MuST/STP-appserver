@@ -581,12 +581,13 @@ class Editor(auth.UserAuth):
         """
         try:
             LOG.info("CTM parsing recognize mode")
-            template = '<time datetime="$raw_time">$word'
-            template_conf = '<time datetime="$raw_time"><conf style="background-color: $color">$word</conf>'
+            template = '<time datetime="$raw_time">$word</time>'
+            template_conf = '<time datetime="$raw_time"><conf style="background-color: $color">$word</conf></time>'
             out = ["<p>"]
             for line in ctm.splitlines():
                 (tag, channel, start, end, word, conf) = line.split()
-                raw_time = float(start)
+                (spk, seg_start, seg_end) = tag.split("_")
+                raw_time = float(start) + (float(int(seg_start)) / 1000.0)
                 conf = float(conf)
                 if conf == 1.0:
                     out.append(string.Template(template).substitute({"raw_time" : raw_time, "word" : word.replace("<","{").replace(">","}")}))
