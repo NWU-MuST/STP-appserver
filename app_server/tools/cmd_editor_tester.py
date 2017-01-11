@@ -14,7 +14,7 @@ import logging
 import logging.handlers
 
 BASEURL = "http://127.0.0.1:9999/wsgi/"
-
+USERNO = 2
 readline.parse_and_bind('tab: complete')
 readline.parse_and_bind('set editing-mode vi')
 
@@ -62,7 +62,7 @@ class Project:
         self.projectid = None
         self.users = {}
 
-    def gen_users(self, user_number=20):
+    def gen_users(self, user_number=USERNO):
         LOG.info("Generating {} users".format(user_number))
         for i in range(user_number):
             usr = 'usr{}'.format(str(i).zfill(3))
@@ -72,7 +72,7 @@ class Project:
             self.users[usr]["name"] = gen_str()
             self.users[usr]["surname"] = gen_str(10)
             self.users[usr]["email"] = "{}@{}.org".format(gen_str(), gen_str())
-
+            self.users[usr]["role"] = "project"
         return self.users
 
     def adminlin(self):
@@ -83,7 +83,7 @@ class Project:
         if self.admin_token is None:
             LOG.info("Admin logging in")
             headers = {"Content-Type" : "application/json"}
-            data = {"username": "root", "password": "123456"}
+            data = {"username": "root", "password": "123456", "role" : "admin"}
             res = requests.post(BASEURL + "projects/admin/login", headers=headers, data=json.dumps(data))
             print('adminlin(): SERVER SAYS:', res.text)
             print(res.status_code)
@@ -120,7 +120,8 @@ class Project:
             LOG.info("Adding user {}".format(user))
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.admin_token, "username": self.users[user]["username"], "password": self.users[user]["password"],
-             "name": self.users[user]["name"], "surname": self.users[user]["surname"], "email": self.users[user]["email"]}
+             "name": self.users[user]["name"], "surname": self.users[user]["surname"], "email": self.users[user]["email"],
+             "role": self.user[user]["role"]}
             res = requests.post(BASEURL + "projects/admin/adduser", headers=headers, data=json.dumps(data))
             print('adduser(): SERVER SAYS:', res.text)
             print(res.status_code)
@@ -140,7 +141,7 @@ class Project:
         if self.user_token is None:
             LOG.info("{} logging in".format(user))
             headers = {"Content-Type" : "application/json"}
-            data = {"username": self.users[user]["username"], "password": self.users[user]["password"]}
+            data = {"username": self.users[user]["username"], "password": self.users[user]["password"], "role" : self.users[user]["role"]}
             res = requests.post(BASEURL + "projects/login", headers=headers, data=json.dumps(data))
             print('login(): SERVER SAYS:', res.text)
             pkg = res.json()
@@ -254,7 +255,7 @@ class Editor:
         self.users = {}
         self.username = None
 
-    def gen_users(self, user_number=20):
+    def gen_users(self, user_number=USERNO):
         LOG.info("Generating {} users".format(user_number))
         for i in range(user_number):
             usr = 'usr{}'.format(str(i).zfill(3))
@@ -264,6 +265,7 @@ class Editor:
             self.users[usr]["name"] = gen_str()
             self.users[usr]["surname"] = gen_str(10)
             self.users[usr]["email"] = "{}@{}.org".format(gen_str(), gen_str())
+            self.users[usr]["role"] = "editor"
 
         return self.users
 
@@ -279,7 +281,7 @@ class Editor:
         if self.user_token is None:
             LOG.info("username={}: {} logging in".format(self.users[user]["username"], user))
             headers = {"Content-Type" : "application/json"}
-            data = {"username": self.users[user]["username"], "password": self.users[user]["password"]}
+            data = {"username": self.users[user]["username"], "password": self.users[user]["password"], "role" : self.users[user]["role"]}
             res = requests.post(BASEURL + "editor/login", headers=headers, data=json.dumps(data))
             print('login(): SERVER SAYS:', res.text)
             LOG.info('username={}: login(): SERVER SAYS:'.format(self.users[user]["username"]), res.text)
@@ -298,7 +300,7 @@ class Editor:
         """
         if self.admin_token is None:
             headers = {"Content-Type" : "application/json"}
-            data = {"username": "root", "password": "123456"}
+            data = {"username": "root", "password": "123456", "role" : "admin"}
             res = requests.post(BASEURL + "editor/admin/login", headers=headers, data=json.dumps(data))
             print('SERVER SAYS:', res.text)
             print(res.status_code)
@@ -351,7 +353,8 @@ class Editor:
             LOG.info("Adding user {}".format(user))
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.admin_token, "username": self.users[user]["username"], "password": self.users[user]["password"],
-             "name": self.users[user]["name"], "surname": self.users[user]["surname"], "email": self.users[user]["email"]}
+                    "name": self.users[user]["name"], "surname": self.users[user]["surname"], "email": self.users[user]["email"],
+                    "role" : self.users[user]["role"]}
             res = requests.post(BASEURL + "editor/admin/adduser", headers=headers, data=json.dumps(data))
             print('adduser(): SERVER SAYS:', res.text)
             print(res.status_code)
@@ -466,7 +469,7 @@ class Editor:
         LOG.info("username={}: loadusers(): Entering".format(self.username))
         if self.user_token is not None and self.projectid is not None:
             headers = {"Content-Type" : "application/json"}
-            data = {'token' : self.user_token}
+            data = {'token' : self.user_token, "role" : "editor"}
             res = requests.post(BASEURL + "editor/loadusers", headers=headers, data=json.dumps(data))
             print('SERVER SAYS:', res.text)
             LOG.info("username={}: loadusers: ".format(self.username), res.text)

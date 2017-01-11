@@ -26,9 +26,10 @@ def create_new_db(dbfn):
                                                                                                "name VARCHAR(30)",
                                                                                                "surname VARCHAR(30)",
                                                                                                "email VARCHAR(50)",
+                                                                                               "role VARCHAR(128)",
                                                                                                "tmppwhash VARCHAR(60)"])))
     db_curs.execute("CREATE TABLE tokens ({})".format(", ".join(["token VARCHAR(20) PRIMARY KEY",
-                                                                 "username VARCHAR(30)",
+                                                                 "username VARCHAR(30)", "role VARCHAR(128)",
                                                                  "expiry TIMESTAMP"])))
     db_conn.commit()
     return db_conn
@@ -49,5 +50,5 @@ if __name__ == "__main__":
 
     db_conn = create_new_db(outfn)
     db_curs = db_conn.cursor()
-    db_curs.execute("INSERT INTO users ( username, pwhash, salt, name, surname, email, tmppwhash ) VALUES (?,?,?,?,?,?,?)", ("root", pwhash, salt, None, None, None, None))
+    db_curs.execute("INSERT INTO users ( username, pwhash, salt, name, surname, email, role, tmppwhash ) VALUES (?,?,?,?,?,?,?,?)", ("root", pwhash, salt, None, None, None, "admin", None))
     db_conn.commit()

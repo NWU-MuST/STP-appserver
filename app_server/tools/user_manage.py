@@ -36,7 +36,7 @@ if __name__ == "__main__":
 
     if args.task.upper() == "ADD":
         inputs = {}
-        params = ["username", "name", "surname", "email"]
+        params = ["username", "name", "surname", "email", "role"]
         for item in params:
             stdin = ""
             while stdin == "":
@@ -54,7 +54,7 @@ if __name__ == "__main__":
             salt = bcrypt.gensalt()
         pwhash = bcrypt.hashpw(inputs["password"], salt)
 
-        db_curs.execute("INSERT INTO users ( username, pwhash, salt, name, surname, email, tmppwhash ) VALUES (?,?,?,?,?,?,?)", (inputs["username"], pwhash, salt, inputs["name"], inputs["surname"], inputs["email"], None))
+        db_curs.execute("INSERT INTO users ( username, pwhash, salt, name, surname, email, role, tmppwhash ) VALUES (?,?,?,?,?,?,?,?)", (inputs["username"], pwhash, salt, inputs["name"], inputs["surname"], inputs["email"], inputs["role"], None))
         db_conn.commit()
 
     elif args.task.upper() == "DEL":
@@ -83,5 +83,4 @@ if __name__ == "__main__":
         print("Unknown command: {}".format(args.task.upper()))
         import sys
         sys.exit(-1)
-
 

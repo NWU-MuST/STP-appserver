@@ -1,21 +1,21 @@
 {
     "MODULES" : {
 	"service.projects.Projects" : "config/projects.json",
-	"service.projects.Admin" : "config/projects_admin.json",
+	"service.projects.Admin" : "config/admin.json",
 	"service.editor.Editor" : "config/editor.json",
-	"service.editor.Admin" : "config/editor_admin.json"
+	"service.editor.Admin" : "config/admin.json"
     },
 
     "HANDLERS" : {
 	"POST" : {
 	    "/projects/admin/login" : { "method" : "service.projects.Admin.login",
-					"parameters" : ["username", "password"] },
+					"parameters" : ["username", "password", "role"] },
 	    "/projects/admin/logout" : { "method" : "service.projects.Admin.logout",
 					 "parameters" : ["token"] },
 	    "/projects/admin/logout2" : { "method" : "service.projects.Admin.logout2",
 					  "parameters" : ["username", "password"] },
 	    "/projects/admin/adduser" : { "method" : "service.projects.Admin.add_user",
-					  "parameters" : ["token", "username", "password", "name", "surname", "email"] },
+					  "parameters" : ["token", "username", "password", "name", "surname", "email", "role"] },
 	    "/projects/admin/deluser" : { "method" : "service.projects.Admin.del_user",
 					  "parameters" : ["token", "username"] },
 	    "/projects/admin/userinfo" : { "method" : "service.projects.Admin.get_uinfo",
@@ -23,10 +23,10 @@
 	    "/projects/admin/updateuser" : { "method" : "service.projects.Admin.update_user",
 					     "parameters" : ["username", "token"] },
 	    "/projects/admin/loadusers" : { "method" : "service.projects.Admin.get_users",
-					    "parameters" : ["token"] },
+					    "parameters" : ["token", "role"] },
 	    
 	    "/projects/login" : { "method" : "service.projects.Projects.login",
-				  "parameters" : ["username", "password"] },
+				  "parameters" : ["username", "password", "role"] },
 	    "/projects/logout" : { "method" : "service.projects.Projects.logout",
 				   "parameters" : ["token"] },
 	    "/projects/logout2" : { "method" : "service.projects.Projects.logout2",
@@ -43,7 +43,7 @@
 	    "/projects/createproject" : { "method" : "service.projects.Projects.create_project",
 					  "parameters" : ["token", "projectname", "category"] },
 	    "/projects/loadusers" : { "method" : "service.projects.Projects.get_users",
-					  "parameters" : ["token" ] },
+					  "parameters" : ["token", "role"] },
 	    "/projects/listprojects" : { "method" : "service.projects.Projects.list_projects",
 					 "parameters" : ["token"] },
 	    "/projects/listcreatedprojects" : { "method" : "service.projects.Projects.list_created_projects",
@@ -66,13 +66,13 @@
 					  "parameters" : ["token", "projectid"] },
 
 	    "/editor/admin/login" : { "method" : "service.editor.Admin.login",
-					"parameters" : ["username", "password"] },
+					"parameters" : ["username", "password", "role"] },
 	    "/editor/admin/logout" : { "method" : "service.editor.Admin.logout",
 					 "parameters" : ["token"] },
 	    "/editor/admin/logout2" : { "method" : "service.editor.Admin.logout2",
 					  "parameters" : ["username", "password"] },
 	    "/editor/admin/adduser" : { "method" : "service.editor.Admin.add_user",
-					  "parameters" : ["token", "username", "password", "name", "surname", "email"] },
+					  "parameters" : ["token", "username", "password", "name", "surname", "email", "role"] },
 	    "/editor/admin/deluser" : { "method" : "service.editor.Admin.del_user",
 					  "parameters" : ["token", "username"] },
 	    "/editor/admin/userinfo" : { "method" : "service.editor.Admin.get_uinfo",
@@ -80,10 +80,10 @@
 	    "/editor/admin/updateuser" : { "method" : "service.editor.Admin.update_user",
 					     "parameters" : ["username", "token"] },
 	    "/editor/admin/loadusers" : { "method" : "service.editor.Admin.get_users",
-					    "parameters" : ["token"] },
+					    "parameters" : ["token", "role"] },
 
 	    "/editor/login" : { "method" : "service.editor.Editor.login",
-				  "parameters" : ["username", "password"] },
+				  "parameters" : ["username", "password", "role"] },
 	    "/editor/logout" : { "method" : "service.editor.Editor.logout",
 				   "parameters" : ["token"] },
 	    "/editor/logout2" : { "method" : "service.editor.Editor.logout2",
@@ -107,7 +107,7 @@
 	    "/editor/clearerror" : { "method" : "service.editor.Editor.clear_error",
 				   "parameters" : ["token", "taskid", "projectid"] },
 	    "/editor/loadusers" : { "method" : "service.projects.Editor.get_users",
-					  "parameters" : ["token" ] }
+					  "parameters" : ["token", "role" ] }
 
 	},
 
@@ -130,7 +130,7 @@
 
     "speechserver" : {
         "username" : "appserver",
-        "password" : "tT5uV2vju9ECTpGb",
+        "password" : "123456",
         "login" : "jobs/login",
         "logout" : "jobs/logout"
     }   

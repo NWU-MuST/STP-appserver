@@ -82,17 +82,9 @@ Setup authentication databases using `./app_server/tools/authdb.py`
 
 ```
 $ mkdir ~/stp
-$ ./app_server/tools/authdb.py ~/stp/editor_admin_auth.db
-$ ./app_server/tools/authdb.py ~/stp/editor_auth.db
+$ ./app_server/tools/authdb.py ~/stp/admin.db
+$ ./app_server/tools/authdb.py ~/stp/auth.db
 ```
-
-The authentication databases below should have been created when following the docker build image README.
-But are included here for completeness.  
-```
-$ ./app_server/tools/authdb.py ~/stp/projects_admin_auth.db
-$ ./app_server/tools/authdb.py ~/stp/projects_auth.db
-```
-
 Setup project databases using `./app_server/tools/projectdb.py`
 
 ```

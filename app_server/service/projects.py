@@ -59,7 +59,7 @@ def authlog(okaymsg):
             username = None #in case exception before authenticate
             try:
                 #AUTH + INSERT USERNAME INTO FUNC SCOPE
-                username = self.authdb.authenticate(request["token"])
+                username = self.authdb.authenticate(request["token"], self._role)
                 fn_globals = {}
                 fn_globals.update(globals())
                 fn_globals.update({"username": username})
@@ -96,6 +96,7 @@ class Projects(auth.UserAuth):
         self._categories = self._config["categories"]
         self._languages = self._config["languages"]
         self._speech = speechserv
+        self._role = self._config["role"]
         #DB connection setup:
         self.db = sqlite.connect(self._config['projectdb'], factory=ProjectDB)
         self.db.row_factory = sqlite.Row

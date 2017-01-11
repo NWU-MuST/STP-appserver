@@ -8,7 +8,8 @@ Used to create a admin and user authentication databases for different services:
 ./authdb.py /path/to/database/name.db rootpass
 ```
 
-This tool should be used to create an authentication database for project and editor
+This tool should be used to create a single authentication database for project and editor and a single administration database.
+Edit config/auth.db and config/admin.db to refer to these databases.
 
 ## projectdb.py
 

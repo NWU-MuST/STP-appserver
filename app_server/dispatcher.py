@@ -164,7 +164,6 @@ class Dispatch:
             else:
                 raise
         method = getattr(module, self._routing['POST'][uri]['method'])
-
         dispatch_result = dict()
         result = method(data)
         if type(result) in [str, unicode]:
@@ -219,7 +218,6 @@ class Dispatch:
 
             module = module_hook(module_config, self._speech)
             method = getattr(module, self._routing['PUT'][uri]['method'])
-
             dispatch_result = dict()
             result = method(data)
             if type(result) in [str, unicode]:

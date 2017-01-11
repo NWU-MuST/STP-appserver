@@ -146,7 +146,8 @@ class Test:
     def adminlin(self, username=None, password=None):
         LOG.debug("ENTER")
         data = {"username": username or self.auser,
-                "password": password or self.apassw}
+                "password": password or self.apassw,
+                "role" : "admin"}
         result = post("admin/login", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
@@ -183,7 +184,8 @@ class Test:
                 "password": password or self.passw,
                 "name": name or self.name,
                 "surname": surname or self.surname,
-                "email": email or self.email}
+                "email": email or self.email,
+                "role" : "project;editor"}
         result = post("admin/adduser", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
@@ -204,7 +206,8 @@ class Test:
     def login(self, username=None, password=None):
         LOG.debug("ENTER")
         data = {"username": username or self.user,
-                "password": password or self.passw}
+                "password": password or self.passw,
+                "role" : "project"}
         result = post("login", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
@@ -272,7 +275,7 @@ class Test:
 
     def loadusers(self, token=None):
         LOG.debug("ENTER")
-        data = {"token": token or self.token}
+        data = {"token": token or self.token, "role" : "editor"}
         result = post("loadusers", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))

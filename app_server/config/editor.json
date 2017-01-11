@@ -1,7 +1,8 @@
-{ "authdb": "/mnt/stp/editor_auth.db",
+{ "authdb": "/mnt/stp/auth.db",
   "projectdb": "/mnt/stp/projects.db",
   "storage": "/mnt/stp/storage",
   "toklife": 31536000,
   "speechservices": { "services": ["diarize", "align", "recognize"],
-    "add" : "jobs/addjob", "delete" : "jobs/deletejob"}
+  "add" : "jobs/addjob", "delete" : "jobs/deletejob"},
+  "role" : "editor"
 }

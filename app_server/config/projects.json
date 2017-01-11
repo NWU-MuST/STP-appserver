@@ -1,8 +1,9 @@
-{ "authdb": "/mnt/stp/projects_auth.db",
+{ "authdb": "/mnt/stp/auth.db",
   "projectdb": "/mnt/stp/projects.db",
   "storage": "/mnt/stp/storage",
   "toklife": 31536000,
   "categories": ["National Assembly", "NCOP", "Committees", "General"],
   "languages" : ["English", "Afrikaans", "isiXhosa", "isiZulu", "isiNdebele", "Siswati", "Xitsonga", "Tshivenda", "Setswana", "Sepedi", "Sesotho"],
-  "speechservices": {"diarize": "jobs/addjob"}
+  "speechservices": {"diarize": "jobs/addjob"},
+  "role" : "project"
 }
