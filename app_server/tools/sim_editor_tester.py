@@ -88,7 +88,7 @@ class Project:
             LOG.info("Admin logging in")
             headers = {"Content-Type" : "application/json"}
             data = {"username": "root", "password": "123456", "role" : "admin"}
-            res = requests.post(BASEURL + "projects/admin/login", headers=headers, data=json.dumps(data))
+            res = requests.post(BASEURL + "admin/login", headers=headers, data=json.dumps(data))
             print('adminlin(): SERVER SAYS:', res.text)
             print(res.status_code)
             pkg = res.json()
@@ -105,7 +105,7 @@ class Project:
             LOG.info("Admin logging out")
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.admin_token}
-            res = requests.post(BASEURL + "projects/admin/logout", headers=headers, data=json.dumps(data))
+            res = requests.post(BASEURL + "admin/logout", headers=headers, data=json.dumps(data))
             print('adminlout(): SERVER SAYS:', res.text)
             self.admin_token = None
         else:
@@ -126,7 +126,7 @@ class Project:
             data = {"token": self.admin_token, "username": self.users[user]["username"], "password": self.users[user]["password"],
              "name": self.users[user]["name"], "surname": self.users[user]["surname"], "email": self.users[user]["email"]
              "role" : self.users[user]["role"]}
-            res = requests.post(BASEURL + "projects/admin/adduser", headers=headers, data=json.dumps(data))
+            res = requests.post(BASEURL + "admin/adduser", headers=headers, data=json.dumps(data))
             print('adduser(): SERVER SAYS:', res.text)
             print(res.status_code)
         else:
@@ -304,7 +304,7 @@ class Editor:
             headers = {"Content-Type" : "application/json"}
             data = {"username": "root", "password": "123456", "role" : "admin"}
             print('ADMINLIN:', data)
-            res = requests.post(BASEURL + "editor/admin/login", headers=headers, data=json.dumps(data))
+            res = requests.post(BASEURL + "admin/login", headers=headers, data=json.dumps(data))
             print('SERVER SAYS:', res.text)
             pkg = res.json()
             self.admin_token = pkg['token']
@@ -321,7 +321,7 @@ class Editor:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.admin_token}
             print('ADMINLOUT:', data)
-            res = requests.post(BASEURL + "editor/admin/logout", headers=headers, data=json.dumps(data))
+            res = requests.post(BASEURL + "admin/logout", headers=headers, data=json.dumps(data))
             print('SERVER SAYS:', res.text)
             self.admin_token = None
             return res.status_code, None
@@ -359,7 +359,7 @@ class Editor:
                  "name": self.users[user]["name"], "surname": self.users[user]["surname"], "email": self.users[user]["email"]
                  "role" : self.users[user]["role"]}
                 print('ADDUSER:', data)
-                res = requests.post(BASEURL + "editor/admin/adduser", headers=headers, data=json.dumps(data))
+                res = requests.post(BASEURL + "admin/adduser", headers=headers, data=json.dumps(data))
                 print('SERVER SAYS:', res.text)
                 LOG.info("username={}: adduser(): SERVER SAYS:".format("root", res.text))
                 return res.status_code, res.text

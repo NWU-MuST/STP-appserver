@@ -85,8 +85,8 @@ def authlog(okaymsg):
     return decorator
 
 
-class Admin(admin.Admin):
-    pass
+#class Admin(admin.Admin):
+#    pass
 
 
 class Projects(auth.UserAuth):
@@ -454,14 +454,16 @@ class Projects(auth.UserAuth):
             if not row["audiofile"]:
                 raise ConflictError("No audio has been uploaded")
             #Set up I/O access and lock the project
-            db.insert_incoming(request["projectid"], url=auth.gen_token(), servicetype="diarize")
-            db.insert_outgoing(request["projectid"], url=auth.gen_token(), audiofile=row["audiofile"])
+            inurl = auth.gen_token()
+            outurl = auth.gen_token()
+            db.insert_incoming(request["projectid"], url=inurl, servicetype="diarize")
+            db.insert_outgoing(request["projectid"], url=outurl, audiofile=row["audiofile"])
             db.lock_project(request["projectid"], jobid="diarize_audio")
         #Make job request:
         try:
             # TEMPORARILY COMMENTED OUT FOR TESTING WITHOUT SPEECHSERVER:
-            jobreq = {"token" : request["token"], "getaudio": os.path.join(APPSERVER, outurl),
-                      "putresult": os.path.join(APPSERVER, inurl), "service" : "diarize", "subsystem" : "default"}
+            jobreq = {"token" : self._speech.token(), "getaudio": os.path.join(APPSERVER, "projects", outurl),
+                      "putresult": os.path.join(APPSERVER, "projects", inurl), "service" : "diarize", "subsystem" : "default"}
             LOG.debug(os.path.join(SPEECHSERVER, self._config["speechservices"]["diarize"]))
             reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]["diarize"]), data=json.dumps(jobreq))
             reqstatus = reqstatus.json()

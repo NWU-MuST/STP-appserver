@@ -1,28 +1,27 @@
 {
     "MODULES" : {
 	"service.projects.Projects" : "config/projects.json",
-	"service.projects.Admin" : "config/admin.json",
-	"service.editor.Editor" : "config/editor.json",
-	"service.editor.Admin" : "config/admin.json"
+	"service.admin.Admin" : "config/admin.json",
+	"service.editor.Editor" : "config/editor.json"
     },
 
     "HANDLERS" : {
 	"POST" : {
-	    "/projects/admin/login" : { "method" : "service.projects.Admin.login",
+	    "/admin/login" : { "method" : "service.admin.Admin.login",
 					"parameters" : ["username", "password", "role"] },
-	    "/projects/admin/logout" : { "method" : "service.projects.Admin.logout",
+	    "/admin/logout" : { "method" : "service.admin.Admin.logout",
 					 "parameters" : ["token"] },
-	    "/projects/admin/logout2" : { "method" : "service.projects.Admin.logout2",
+	    "/admin/logout2" : { "method" : "service.admin.Admin.logout2",
 					  "parameters" : ["username", "password"] },
-	    "/projects/admin/adduser" : { "method" : "service.projects.Admin.add_user",
+	    "/admin/adduser" : { "method" : "service.admin.Admin.add_user",
 					  "parameters" : ["token", "username", "password", "name", "surname", "email", "role"] },
-	    "/projects/admin/deluser" : { "method" : "service.projects.Admin.del_user",
+	    "/admin/deluser" : { "method" : "service.admin.Admin.del_user",
 					  "parameters" : ["token", "username"] },
-	    "/projects/admin/userinfo" : { "method" : "service.projects.Admin.get_uinfo",
+	    "/admin/userinfo" : { "method" : "service.admin.Admin.get_uinfo",
 					   "parameters" : ["username", "token"] },
-	    "/projects/admin/updateuser" : { "method" : "service.projects.Admin.update_user",
+	    "/admin/updateuser" : { "method" : "service.admin.Admin.update_user",
 					     "parameters" : ["username", "token"] },
-	    "/projects/admin/loadusers" : { "method" : "service.projects.Admin.get_users",
+	    "/admin/loadusers" : { "method" : "service.admin.Admin.get_users",
 					    "parameters" : ["token", "role"] },
 	    
 	    "/projects/login" : { "method" : "service.projects.Projects.login",
@@ -64,23 +63,6 @@
 					 "parameters" : ["token", "projectid"] },
 	    "/projects/unlockproject" : { "method" : "service.projects.Projects.unlock_project",
 					  "parameters" : ["token", "projectid"] },
-
-	    "/editor/admin/login" : { "method" : "service.editor.Admin.login",
-					"parameters" : ["username", "password", "role"] },
-	    "/editor/admin/logout" : { "method" : "service.editor.Admin.logout",
-					 "parameters" : ["token"] },
-	    "/editor/admin/logout2" : { "method" : "service.editor.Admin.logout2",
-					  "parameters" : ["username", "password"] },
-	    "/editor/admin/adduser" : { "method" : "service.editor.Admin.add_user",
-					  "parameters" : ["token", "username", "password", "name", "surname", "email", "role"] },
-	    "/editor/admin/deluser" : { "method" : "service.editor.Admin.del_user",
-					  "parameters" : ["token", "username"] },
-	    "/editor/admin/userinfo" : { "method" : "service.editor.Admin.get_uinfo",
-					   "parameters" : ["username", "token"] },
-	    "/editor/admin/updateuser" : { "method" : "service.editor.Admin.update_user",
-					     "parameters" : ["username", "token"] },
-	    "/editor/admin/loadusers" : { "method" : "service.editor.Admin.get_users",
-					    "parameters" : ["token", "role"] },
 
 	    "/editor/login" : { "method" : "service.editor.Editor.login",
 				  "parameters" : ["username", "password", "role"] },
@@ -132,6 +114,7 @@
         "username" : "appserver",
         "password" : "123456",
         "login" : "jobs/login",
-        "logout" : "jobs/logout"
+        "logout" : "jobs/logout",
+        "logout2": "jobs/logout2"
     }   
 }

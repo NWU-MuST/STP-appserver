@@ -72,8 +72,8 @@ def authlog(okaymsg):
         return wrapper
     return decorator
 
-class Admin(admin.Admin):
-    pass
+#class Admin(admin.Admin):
+#    pass
 
 class Editor(auth.UserAuth):
 

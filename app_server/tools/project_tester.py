@@ -25,7 +25,7 @@ except ImportError:
 import numpy as np
 
 
-DEF_BASEURL = "http://127.0.0.1:9999/wsgi/projects"
+DEF_BASEURL = "http://127.0.0.1:9999/wsgi/"
 DEF_LOGFILE = "project_tester.log"
 DEF_LOGLEVEL = 20 #INFO
 DEF_TESTFILE = "ptest01.json"
@@ -62,6 +62,7 @@ def post(service, data, baseurl=DEF_BASEURL):
     servpath = os.path.join(baseurl, service)
     LOG.debug(servpath)
     return requests.post(servpath, headers=headers, data=json.dumps(data))    
+
 
 ################################################################################
 
@@ -208,7 +209,7 @@ class Test:
         data = {"username": username or self.user,
                 "password": password or self.passw,
                 "role" : "project"}
-        result = post("login", data)
+        result = post("projects/login", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
@@ -221,7 +222,7 @@ class Test:
     def logout(self, token=None):
         LOG.debug("ENTER")
         data = {"token": token or self.token}
-        result = post("logout", data)
+        result = post("projects/logout", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
@@ -234,7 +235,7 @@ class Test:
         LOG.debug("ENTER")
         data = {"username": username or self.user,
                 "password": password or self.passw}
-        result = post("logout2", data)
+        result = post("projects/logout2", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
@@ -248,7 +249,7 @@ class Test:
         LOG.debug("ENTER")
         data = {"token": token or self.token,
                 "password": password or self.passw_}
-        result = post("changepassword", data)
+        result = post("projects/changepassword", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
@@ -258,7 +259,7 @@ class Test:
     def listcategories(self, token=None):
         LOG.debug("ENTER")
         data = {"token": token or self.token}
-        result = post("listcategories", data)
+        result = post("projects/listcategories", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
@@ -267,7 +268,7 @@ class Test:
     def listlanguages(self, token=None):
         LOG.debug("ENTER")
         data = {"token": token or self.token}
-        result = post("listlanguages", data)
+        result = post("projects/listlanguages", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
@@ -275,8 +276,8 @@ class Test:
 
     def loadusers(self, token=None):
         LOG.debug("ENTER")
-        data = {"token": token or self.token, "role" : "editor"}
-        result = post("loadusers", data)
+        data = {"token": token or self.token, "role" : "project"}
+        result = post("projects/loadusers", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
@@ -287,7 +288,7 @@ class Test:
         data = {"token": token or self.token,
                 "projectname": projectname or self.projectname,
                 "category": category or self.projectcat}
-        result = post("createproject", data)
+        result = post("projects/createproject", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
@@ -307,7 +308,7 @@ class Test:
     def listprojects(self, token=None):
         LOG.debug("ENTER")
         data = {"token": token or self.token}
-        result = post("listprojects", data)
+        result = post("projects/listprojects", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
@@ -316,7 +317,7 @@ class Test:
     def listcreatedprojects(self, token=None):
         LOG.debug("ENTER")
         data = {"token": token or self.token}
-        result = post("listcreatedprojects", data)
+        result = post("projects/listcreatedprojects", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
@@ -326,7 +327,7 @@ class Test:
         LOG.debug("ENTER")
         data = {"token": token or self.token,
                 "projectid": projectid or self.pid}
-        result = post("loadproject", data)
+        result = post("projects/loadproject", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
@@ -337,7 +338,7 @@ class Test:
         LOG.debug("ENTER")
         data = {"token": token or self.token,
                 "projectid": projectid or self.pid}
-        result = post("deleteproject", data)
+        result = post("projects/deleteproject", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
@@ -352,7 +353,7 @@ class Test:
                 "projectid": projectid or self.pid,
                 "filename": filename or os.path.basename(self.audiofile),
                 "file": open(filename or self.audiofile, "rb")}
-        result = requests.post(os.path.join(self.baseurl, "uploadaudio"), files=data)
+        result = requests.post(os.path.join(self.baseurl, "projects/uploadaudio"), files=data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
@@ -364,7 +365,7 @@ class Test:
         LOG.debug("ENTER")
         data = {"token": token or self.token,
                 "projectid": projectid or self.pid}
-        result = requests.get(os.path.join(self.baseurl, "getaudio"), params=data)
+        result = requests.get(os.path.join(self.baseurl, "projects/getaudio"), params=data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format("BINARY"))
         if result.status_code != 200:
@@ -382,7 +383,7 @@ class Test:
                 "projectid": projectid or self.pid}
         putdata = {"CTM": ctm or self.diarizectm}
 
-        result = post("diarizeaudio", data)
+        result = post("projects/diarizeaudio", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
@@ -419,7 +420,7 @@ class Test:
         LOG.debug("ENTER")
         data = {"token": token or self.token,
                 "projectid": projectid or self.pid}
-        result = post("diarizeaudio", data)
+        result = post("projects/diarizeaudio", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
@@ -433,7 +434,7 @@ class Test:
                 "projectid": projectid or self.pid,
                 "tasks": tasks or self.savetasks,
                 "project": project or self.saveproj}
-        result = post("saveproject", data)
+        result = post("projects/saveproject", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
@@ -445,7 +446,7 @@ class Test:
         data = {"token": token or self.token,
                 "projectid": projectid or self.pid,
                 "collator": collator or self.user}
-        result = post("assigntasks", data)
+        result = post("projects/assigntasks", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
@@ -459,7 +460,7 @@ class Test:
                 "projectid": projectid or self.pid,
                 "tasks": tasks or self.updatetasks,
                 "project": project or self.updateproj}
-        result = post("updateproject", data)
+        result = post("projects/updateproject", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
@@ -470,7 +471,7 @@ class Test:
         LOG.debug("ENTER")
         data = {"token": token or self.token,
                 "projectid": projectid or self.pid}
-        result = post("unlockproject", data)
+        result = post("projects/unlockproject", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:

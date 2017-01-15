@@ -24,6 +24,7 @@ class Speech:
         self._password = self._config["speechserver"]["password"]
         self._loginurl = self._config["speechserver"]["login"]
         self._logouturl = self._config["speechserver"]["logout"]
+        self._logout2url = self._config["speechserver"]["logout2"]
         self._token = None
 
     def login(self):
@@ -35,8 +36,20 @@ class Speech:
         LOG.debug("{}".format(reqstatus.text))
         reqstatus = reqstatus.json()
         if "token" not in reqstatus:
-            LOG.debug("Could not log into speech server")
-            raise BadRequestError("Cannot log into speech server")
+            reqstatus = requests.post(os.path.join(SPEECHSERVER, self._logout2url), data=json.dumps(jobreq))
+            LOG.debug("{}".format(reqstatus.text))
+            if reqstatus.status_code != 200:
+                LOG.debug("LOGOUT2: Could not log into speech server")
+                raise BadRequestError("LOGOUT2: Cannot log into speech server")
+
+            reqstatus = requests.post(os.path.join(SPEECHSERVER, self._loginurl), data=json.dumps(jobreq))
+            LOG.debug("{}".format(reqstatus.text))
+            reqstatus = reqstatus.json()
+
+            if "token" not in reqstatus:
+                LOG.debug("Could not log into speech server")
+                raise BadRequestError("Cannot log into speech server")
+
         self._token = reqstatus["token"] 
 
     def logout(self):
