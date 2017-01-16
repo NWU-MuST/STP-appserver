@@ -1,0 +1,6 @@
+{"authdb": "/mnt/stp/admin.db",
+ "target_authdb": "/mnt/stp/auth.db",
+ "projectdb": "/mnt/stp/projects.db",
+ "toklife": 31536000,
+ "role" : "admin"
+}
