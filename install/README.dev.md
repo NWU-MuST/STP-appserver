@@ -47,7 +47,7 @@ docker run --name stp -v ~/stp:/mnt/stp -d -p 9999:80 stp_base:latest
 Log into the admin service as root:
 
 ```bash
-curl -i -k -v -H "Content-Type: application/json" -X POST -d '{"username": "root", "password": <rootpass>, "role" : "admin"}' http://127.0.0.1:9999/wsgi/projects/admin/login
+curl -i -k -v -H "Content-Type: application/json" -X POST -d '{"username": "root", "password": <rootpass>, "role" : "admin"}' http://127.0.0.1:9999/wsgi/admin/login
 ```
 
 which should return a token (your token will be different and you must keep track of this token as subsquent requests make use of this token), e.g.:
@@ -59,7 +59,7 @@ which should return a token (your token will be different and you must keep trac
 Use this token to add a user to the _projects_ service:
 
 ```bash
-curl -i -k -v -H "Content-Type: application/json" -X POST -d '{"token": "YmVkNWEyNzYtM2IwZS00ZDFmLTg0YjAtYzk0YjU3ZjI2N2I1", "username": "neil", "password": "neil", "name": "neil", "surname": "kleynhans", "email": "neil@organisation.org", "role" : "project"}' http://127.0.0.1:9999/wsgi/projects/admin/adduser
+curl -i -k -v -H "Content-Type: application/json" -X POST -d '{"token": "YmVkNWEyNzYtM2IwZS00ZDFmLTg0YjAtYzk0YjU3ZjI2N2I1", "username": "neil", "password": "neil", "name": "neil", "surname": "kleynhans", "email": "neil@organisation.org", "role" : "project"}' http://127.0.0.1:9999/wsgi/admin/adduser
 ```
 
 Log into the _projects_ service as the new user:
