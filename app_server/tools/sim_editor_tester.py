@@ -176,7 +176,7 @@ class Project:
         if self.user_token is not None:
             LOG.info("Creating project")
             headers = {"Content-Type" : "application/json"}
-            data = {"token": self.user_token, "projectname" : gen_str(10), "category" : "NCOP" }
+            data = {"token": self.user_token, "projectname" : gen_str(10), "category" : "NCOP", "projectmanager" : random.choice(self.users.keys())}
             res = requests.post(BASEURL + "projects/createproject", headers=headers, data=json.dumps(data))
             print('createproject(): SERVER SAYS:', res.text)
             print(res.status_code)
@@ -204,11 +204,11 @@ class Project:
             print("User not logged in!")
         print('')
 
-    def saveproject(self):
+    def createtasks(self):
         """
             Save tasks for a specific project
             tasks should be a list of dicts with these elements:
-            tasks = [(editor<string:20>, collater<string:20>, start<float>, end<float>), (), ...]
+            tasks = [(editor<string:20>, start<float>, end<float>), (), ...]
         """
         if self.user_token is not None and self.projectid is not None:
             LOG.info("Saving project")
@@ -227,8 +227,8 @@ class Project:
 
             project = {"projectname": gen_str(10)}
             data = {"token": self.user_token, "projectid" : self.projectid, "tasks": tasks, "project": project}
-            res = requests.post(BASEURL + "projects/saveproject", headers=headers, data=json.dumps(data))
-            print('saveproject(): SERVER SAYS:', res.text)
+            res = requests.post(BASEURL + "projects/createtasks", headers=headers, data=json.dumps(data))
+            print('createtasks(): SERVER SAYS:', res.text)
             print(res.status_code)
         else:
             print("User not logged in!")
@@ -241,7 +241,7 @@ class Project:
         if self.user_token is not None and self.projectid is not None:
             LOG.info("Assigning tasks")
             headers = {"Content-Type" : "application/json"}
-            data = {"token": self.user_token, "projectid" : self.projectid, "collator" : "random"}
+            data = {"token": self.user_token, "projectid" : self.projectid, "collator" : random.choice(self.users.keys())}
             res = requests.post(BASEURL + "projects/assigntasks", headers=headers, data=json.dumps(data))
             print('assigntasks(): SERVER SAYS:', res.text)
             print(res.status_code)

@@ -99,7 +99,7 @@ class Test:
                                 ("diarizeaudio", {"u_loggedin", "u_hasprojects", "p_loaded", "p_hasaudio", "p_unlocked", "p_unassigned"}),
                                 ("diarizeaudio2", {"u_loggedin", "u_hasprojects", "p_loaded", "p_hasaudio", "p_unlocked", "p_unassigned"}),
                                 ("unlockproject", {"u_loggedin", "u_hasprojects", "p_loaded", "p_locked"}),
-                                ("saveproject", {"u_loggedin", "u_hasprojects", "p_loaded", "p_hasaudio", "p_unlocked", "p_unassigned"}),
+                                ("createtasks", {"u_loggedin", "u_hasprojects", "p_loaded", "p_hasaudio", "p_unlocked", "p_unassigned"}),
                                 ("assigntasks", {"u_loggedin", "u_hasprojects", "p_loaded", "p_hasaudio", "p_saved", "p_unlocked", "p_unassigned"}),
                                 ("updateproject", {"u_loggedin", "u_hasprojects", "p_loaded", "p_hasaudio", "p_saved", "p_unlocked", "p_assigned"})])
         self.forever = forever
@@ -287,7 +287,8 @@ class Test:
         LOG.debug("ENTER")
         data = {"token": token or self.token,
                 "projectname": projectname or self.projectname,
-                "category": category or self.projectcat}
+                "category": category or self.projectcat,
+                "projectmanager" : self.user}
         result = post("projects/createproject", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
@@ -428,13 +429,13 @@ class Test:
         self.state["p_unlocked"] = False
         self.state["p_locked"] = True
 
-    def saveproject(self, token=None, projectid=None, tasks=None, project=None):
+    def createtasks(self, token=None, projectid=None, tasks=None, project=None):
         LOG.debug("ENTER")
         data = {"token": token or self.token,
                 "projectid": projectid or self.pid,
                 "tasks": tasks or self.savetasks,
                 "project": project or self.saveproj}
-        result = post("projects/saveproject", data)
+        result = post("projects/createtasks", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
@@ -466,6 +467,19 @@ class Test:
         if result.status_code != 200:
             raise RequestFailed(result.text)
         self.state["p_updated"] = True
+
+    def updateproject2(self, token=None, projectid=None, tasks=None, project=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.token,
+                "projectid": projectid or self.pid,
+                "project": {"projectstatus" : "Assigned"}}
+        result = post("projects/updateproject", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+        self.state["p_updated"] = True
+
 
     def unlockproject(self, token=None, projectid=None):
         LOG.debug("ENTER")
@@ -572,10 +586,12 @@ if __name__ == "__main__":
                     print("LOADPROJECT - load projects")
                     print("UPLOADAUDIO - upload audio to project")
                     print("GETAUDIO - retrieve project audio")
-                    print("SAVEPROJECT - save tasks to a project")
+                    print("CREATETASKS - create and save tasks for a project")
                     print("ASSIGNTASKS - assign tasks to editors")
                     print("DIARIZEAUDIO - save tasks to a project via diarize request (simulate speech server)\n")
                     print("DIARIZEAUDIO2 - like DIARIZEAUDIO but withouth speech server (project stays locked)\n")
+                    print("UPDATEPROJECT - update project and associated tasks")
+                    print("UPDATEPROJECT2 - update projectstatus")
                     print("UNLOCKPROJECT - unlock project (can test this against DIARIZEAUDIO2)")
                     print("EXIT - quit")
                 else:

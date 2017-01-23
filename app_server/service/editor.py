@@ -12,6 +12,7 @@ import requests
 import logging
 import codecs
 import string
+import tempfile
 from functools import wraps
 from types import FunctionType
 
@@ -89,34 +90,16 @@ class Editor(auth.UserAuth):
     @authlog("Return user's tasks")
     def load_tasks(self, request):
         """
-            Load tasks assigned to editor
-            Task state is: CANOPEN, READONLY, SPEECHLOCKED, ERROR
+            Load tasks assigned to editor and as collator
         """
         with self.db as db:
-            raw_tasks = db.get_tasks(username)
-            LOG.debug("{}".format(raw_tasks))
-            if type(raw_tasks) in [str, unicode]:
-                return raw_tasks
-            elif type(raw_tasks) is list and not raw_tasks:
-                return "No tasks assigned to editor"
+            editor_tasks = db.get_all_tasks(username)
+            LOG.debug("{}".format(editor_tasks))
+            collator_tasks = db.get_all_tasks(username, mode="collator")
+            LOG.debug("{}".format(collator_tasks))
+            tasks = {"editor" : editor_tasks, "collator" : collator_tasks }
 
-            # Sort tasks
-            tasks  = {"SPEECHLOCKED" : [], "READONLY" : [], "CANOPEN" : [], "ERROR" : []}
-            for this_task in raw_tasks:
-                if this_task["errstatus"] is not None and this_task["errstatus"] != "":
-                     tasks["ERROR"].append(this_task)
-                elif this_task["jobid"] is not None and this_task["jobid"] != "":
-                     tasks["SPEECHLOCKED"].append(this_task)
-                elif int(this_task["ownership"]) == 1: #TODO: this enum should most probably sit somewhere
-                     tasks["READONLY"].append(this_task)
-                elif int(this_task["ownership"]) == 0:
-                     tasks["CANOPEN"].append(this_task)
-                else:
-                    #TODO: should we raise a 500?
-                    this_task["errstatus"] = "This task is malformed -- something went wrong"
-                    tasks["ERROR"].append(this_task)
-
-            return tasks
+        return tasks
 
     def _test_read(self, filename):
         """
@@ -149,7 +132,7 @@ class Editor(auth.UserAuth):
 
                 self._test_read(audiofile)
 
-                items = db.get_task(request["projectid"], request["taskid"], year, fields=["start", "end"])
+                items = db.get_task_field(request["projectid"], request["taskid"], year, fields=["start", "end"])
                 if not items:
                     raise BadRequestError("Audio segment has not been defined for this task")
 
@@ -171,7 +154,7 @@ class Editor(auth.UserAuth):
 
             with self.db as db:
                 year = db.get_project(request["projectid"], fields=["year"])["year"]
-                textfile = db.get_task(request["projectid"], request["taskid"], year, fields=["textfile"])["textfile"]
+                textfile = db.get_task_field(request["projectid"], request["taskid"], year, fields=["textfile"])["textfile"]
 
                 if textfile is None or len(textfile) == 0:
                     raise NotFoundError("This task has no text file")
@@ -200,7 +183,7 @@ class Editor(auth.UserAuth):
 
             with self.db as db:
                 year = db.get_project(request["projectid"], fields=["year"])["year"]
-                textfile = db.get_task(request["projectid"], request["taskid"], year, fields=["textfile"])["textfile"]
+                textfile = db.get_task_field(request["projectid"], request["taskid"], year, fields=["textfile"])["textfile"]
                 db.set_jobid(request["projectid"], request["taskid"], year, 'save_text')
 
                 if textfile is None or len(textfile) == 0:
@@ -242,7 +225,7 @@ class Editor(auth.UserAuth):
             with self.db as db:
                 db.check_project_task(request["projectid"], request["taskid"], check_err=True)
                 project = db.get_project(request["projectid"], fields=["audiofile", "year"])
-                task = db.get_task(request["projectid"], request["taskid"], project["year"], fields=["textfile","start","end"])
+                task = db.get_task_field(request["projectid"], request["taskid"], project["year"], fields=["textfile","start","end"])
                 db.set_jobid(request["projectid"], request["taskid"], project["year"], "diarize_task")
 
             if project["audiofile"] is None or len(project["audiofile"]) == 0:
@@ -280,7 +263,7 @@ class Editor(auth.UserAuth):
             with self.db as db:
                 db.check_project_task(request["projectid"], request["taskid"], check_err=True)
                 project = db.get_project(request["projectid"], fields=["audiofile", "year"])
-                task = db.get_task(request["projectid"], request["taskid"], project["year"], fields=["textfile","start","end"])
+                task = db.get_task_field(request["projectid"], request["taskid"], project["year"], fields=["textfile","start","end"])
                 db.set_jobid(request["projectid"], request["taskid"], project["year"], "recognize_task")
 
             if project["audiofile"] is None or len(project["audiofile"]) == 0:
@@ -330,7 +313,7 @@ class Editor(auth.UserAuth):
             with self.db as db:
                 db.check_project_task(request["projectid"], request["taskid"], check_err=True)
                 project = db.get_project(request["projectid"], fields=["audiofile", "year"])
-                task = db.get_task(request["projectid"], request["taskid"], project["year"], fields=["textfile","start","end"])
+                task = db.get_task_field(request["projectid"], request["taskid"], project["year"], fields=["textfile","start","end"])
                 db.set_jobid(request["projectid"], request["taskid"], project["year"], "align_task")
 
             if project["audiofile"] is None or len(project["audiofile"]) == 0:
@@ -447,7 +430,10 @@ class Editor(auth.UserAuth):
 
                 # Check if audio range is available
                 if row["start"] is not None and row["end"] is not None:
-                    return {"mime": "audio/ogg", "filename": row["audiofile"], "range" : (float(row["start"]), float(row["end"]))}
+                    if float(row["start"]) == -1.0 and float(row["end"]) == -1.0:
+                        return {"mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "filename": row["audiofile"]}
+                    else:
+                        return {"mime": "audio/ogg", "filename": row["audiofile"], "range" : (float(row["start"]), float(row["end"]))}
                 else:
                     return {"mime": "audio/ogg", "filename": row["audiofile"]}
         except Exception as e:
@@ -487,11 +473,11 @@ class Editor(auth.UserAuth):
                 year = db.get_project(projectid, fields=["year"])["year"]
                 if not year:
                     raise ConflictError("(projectid={}) Project no longer exists".format(projectid))
-                jobid = db.get_task(projectid, taskid, year, fields=["jobid"])["jobid"]
+                jobid = db.get_task_field(projectid, taskid, year, fields=["jobid"])["jobid"]
                 if not jobid:
                     raise ConflictError("No job expected (Project ID: {}, Task ID: {})".format(projectid, taskid))
 
-                textfile = db.get_task(projectid, taskid, year, fields=["textfile"])["textfile"]
+                textfile = db.get_task_field(projectid, taskid, year, fields=["textfile"])["textfile"]
                 if textfile is None or len(textfile) == 0:
                     raise NotFoundError("This task has no text file")
             self._test_read(textfile)
@@ -626,6 +612,22 @@ class Editor(auth.UserAuth):
             LOG.error("Mark task done fail: {}".format(e))
             raise
 
+    @authlog("Mark task done")
+    def reassign_task(self, request):
+        """
+            Re-assign this task to editor (from collator)
+        """
+        try:
+            with self.db as db:
+                db.check_project_task(request["projectid"], request["taskid"], check_err=True)
+                year = db.get_project(request["projectid"], fields=["year"])["year"]
+                db.reassign_task(request["projectid"], request["taskid"], year)
+
+            return "Task reassigned to editor!"
+        except Exception as e:
+            LOG.error("Reassign_task failed: {}".format(e))
+            raise
+
     @authlog("Unlock the task")
     def unlock_task(self, request):
         """
@@ -635,7 +637,7 @@ class Editor(auth.UserAuth):
             with self.db as db:
                 db.check_project_task(request["projectid"], request["taskid"], check_err=True, check_task_job=False)
                 project = db.get_project(request["projectid"], fields=["year", "audiofile"])
-                task = db.get_task(request["projectid"], request["taskid"], project["year"], fields=["start", "end", "jobid"])
+                task = db.get_task_field(request["projectid"], request["taskid"], project["year"], fields=["start", "end", "jobid"])
 
                 if task["jobid"] is None:
                     raise NotFoundError("No Job has been specified")
@@ -669,6 +671,47 @@ class Editor(auth.UserAuth):
             return "Cleared task error status"
         except Exception as e:
             LOG.error("Clear error fail: {}".format(e))
+            raise
+
+    @authlog("Build up MS-WORD document")
+    def buildmaster(self, request):
+        """
+            Return MS-WORD document from all the files
+        """
+        try:
+            with self.db as db:
+                options = db.get_project_text(request["projectid"])
+
+                all_text = []
+                for taskid in sorted(options.keys()):
+                    textfile = options[taskid]
+
+                    if textfile is None or len(textfile) == 0:
+                        raise NotFoundError("Text file is missing for a task")
+
+                    if not os.path.exists(textfile):
+                        raise NotFoundError("Cannot find text file")
+
+                    self._test_read(textfile)
+
+                    with codecs.open(textfile, "r", "utf-8") as f: text = f.read()
+                    all_text.append(text)
+
+                all_text = u"\n".join(all_text)
+                _html = tempfile.NamedTemporaryFile(delete=False)
+                with codecs.open(_html.name, "w", "utf-8") as f: _html.write(all_text)
+                _docx = tempfile.NamedTemporaryFile(delete=False)
+                _docx.close()
+                #os.system("pandoc -f html -t docx -o {} {}".format(_html.name, _docx.name))
+                with open(_docx.name, "w") as f:
+                    f.write("Hello World!")
+                outurl = auth.gen_token()
+                db.insert_outgoing(request["projectid"], outurl, _docx.name, "-1.0", "-1.0")
+                os.remove(_html.name)
+            return {"url" : outurl}
+
+        except Exception as e:
+            LOG.error("Get text failed: {}".format(e))
             raise
 
 
@@ -734,7 +777,7 @@ class EditorDB(sqlite.Connection):
             row = {}
         return row
 
-    def get_task(self, projectid, taskid, year, fields):
+    def get_task_field(self, projectid, taskid, year, fields):
         fields = set(fields)
         query = "SELECT {} FROM T{} WHERE taskid=? AND projectid=?".format(", ".join(fields), year)
         row = self.execute(query, (taskid, projectid)).fetchone()
@@ -744,10 +787,26 @@ class EditorDB(sqlite.Connection):
             row = {}
         return row
 
-    def get_tasks(self, this_user):
-        #TODO: this seems very specific
+    def get_project_text(self, projectid):
+        self.check_project(projectid, check_err=True)
+        _tmp = self.get_project(projectid, fields=["year"])
+        query = "SELECT taskid, textfile FROM T{} WHERE projectid=?".format(_tmp["year"])
+        row = self.execute(query, (projectid,)).fetchall()
+        try:
+            row = dict(row)
+        except TypeError:
+            row = {}
+        return row
+
+    def get_all_tasks(self, this_user, mode="editor"):
         # Fetch all the projects which have been assigned
-        projectids = self.execute("SELECT projectid FROM projects WHERE assigned='Y'").fetchall()
+        if mode == "editor":
+            projectids = self.execute("SELECT projectid, projectname, category FROM projects WHERE assigned='Y'").fetchall()
+        elif mode == "collator":
+            projectids = self.execute("SELECT projectid, projectname, category FROM projects WHERE assigned='Y' AND collator='{}'".format(this_user)).fetchall()
+        else:
+            raise BadRequestError("get_all_tasks: unknown mode = {}".format(mode))
+
         if projectids is None:
             return "No projects have been created"
         projectids = map(dict, projectids)
@@ -757,26 +816,25 @@ class EditorDB(sqlite.Connection):
         project_okay = []
         for projectid in projectids:
             self.check_project(projectid["projectid"], check_err=True)
-            project_okay.append(projectid["projectid"])
+            project_okay.append((projectid["projectid"], projectid["projectname"], projectid["category"]))
         if not project_okay:
             return "No projects have been created"
 
         # Fetch all the years 
-        #TODO: add projectname & category
         years = []
-        for projectid in project_okay:
+        for projectid, projectname, category in project_okay:
             _tmp = self.get_project(projectid, fields=["year"])
-            years.append((projectid, _tmp["year"]))
+            years.append((projectid, projectname, category, _tmp["year"]))
         LOG.debug("{}".format(years))
 
         # Fetch all tasks
         raw_tasks = []
-        for projectid, year in years:
+        for projectid, projectname, category, year in years:
             _tmp = self.execute("SELECT * FROM T{} WHERE projectid=? AND editor=?".format(year), (projectid, this_user,)).fetchall()
 
             if _tmp is not None:
                 _tmp = map(dict, _tmp)
-                for x in _tmp: x.update({"year" : year})
+                for x in _tmp: x.update({"year" : year, "projectname" : projectname, "category" : category})
                 raw_tasks.extend(_tmp)
 
         return raw_tasks
@@ -786,7 +844,18 @@ class EditorDB(sqlite.Connection):
             (commitid, modified, taskid, projectid))
 
     def task_done(self, projectid, taskid, year):
-        self.execute("UPDATE T{} SET ownership=1 WHERE taskid=? AND projectid=?".format(year), (taskid, projectid))
+        row = self.execute("SELECT collator FROM projects WHERE projectid=?", (projectid,)).fetchone()
+        if row is None: #project exists?
+            raise NotFoundError("Project not found")
+        row = dict(row)
+        self.execute("UPDATE T{} SET editing='{}' WHERE taskid=? AND projectid=?".format(year, row["collator"]), (taskid, projectid))
+        self.execute("UPDATE T{} SET completed=? WHERE taskid=? AND projectid=?".format(year), (time.time(), taskid, projectid))
+
+    def reassign_task(self, projectid, taskid, year):
+        row = self.execute("SELECT editor FROM T{} WHERE taskid=? AND projectid=?".format(year), (taskid, projectid)).fetchone()
+        row = dict(row)
+        self.execute("UPDATE T{} SET editing='{}' WHERE taskid=? AND projectid=?".format(year, row["editor"]), (taskid, projectid))
+        self.execute("UPDATE T{} SET completed=? WHERE taskid=? AND projectid=?".format(year), (None, taskid, projectid))
 
     def insert_incoming(self, projectid, taskid, inurl, servicetype):
         self.execute("INSERT INTO incoming (projectid, taskid, url, servicetype) VALUES (?,?,?,?)", (projectid, taskid, inurl, servicetype))

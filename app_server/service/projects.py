@@ -138,7 +138,7 @@ class Projects(auth.UserAuth):
                                "projectname": request["projectname"],
                                "category": request["category"],
                                "creator": username,
-                               "username": username,
+                               "projectmanager": request["projectmanager"],
                                "year": year,
                                "creation": time.time(),
                                "assigned": "N"})
@@ -151,7 +151,7 @@ class Projects(auth.UserAuth):
         """List current projects owned by user
         """
         with self.db as db:
-            projects = db.get_projects(where={"username": username})
+            projects = db.get_projects(where={"projectmanager": username})
         return {"projects" : projects }
 
     @authlog("Returning list of created projects")
@@ -185,30 +185,28 @@ class Projects(auth.UserAuth):
             #This will lock the DB:
             db.check_project(request["projectid"], check_err=False) #DEMIT: check_err?
             project = db.get_project(request["projectid"],
-                                     fields=["projectname", "category", "year"])
+                                     fields=["projectname", "category", "year", "collator", "creator"])
             tasks = db.get_tasks(request["projectid"],
-                                 fields=["taskid", "editor", "start", "end", "language"]) #DEMIT: taskid, ownership?
+                                 fields=["taskid", "editor", "start", "end", "language", "speaker", "editing"])
         return {'project' : project, 'tasks' : tasks}
 
-    @authlog("Saved project")
-    def save_project(self, request):
-        """Save the project state (assignments and task partitioning) in the
+    @authlog("Create tasks")
+    def create_tasks(self, request):
+        """Save the project state (assignments and task partitioning) and create tasks in the
            interim. This can only be run BEFORE `assign_tasks` and
            usually after partitioning (e.g. via speech diarize or the
-           UI or both). To update project meta-info, assignees or
-           toggle ownership after assignment use `update_project` or
-           `set_ownership`
+           UI or both). To update project meta-info or assignees for existing tasks use `update_project`
         """
         #Check whether all necessary fields are in input for each task
         infields = ("editor", "speaker", "start", "end", "language")
-        fields = ("taskid", "projectid") + infields
+        fields = ("taskid", "projectid", "editing") + infields
         tasks = list(request["tasks"])
         for task in tasks:
             if not all(k in task for k in infields):
                 raise BadRequestError("Tasks do not contain all the required fields")
 
         #Extract relevant project fields from input
-        infields = ("projectname", "category")
+        infields = ("projectname", "category", "projectstatus")
         projectdata = dict([(k, v) for k, v in request["project"].iteritems() if k in infields])
 
         #Check received tasks are: contiguous, non-overlapping,
@@ -221,6 +219,7 @@ class Projects(auth.UserAuth):
             prevtask_end = task["end"]
             task["taskid"] = taskid
             task["projectid"] = request["projectid"]
+            task["editing"] = task["editor"]
 
         with self.db as db:
             #This will lock the DB:
@@ -239,7 +238,7 @@ class Projects(auth.UserAuth):
             db.delete_tasks(request["projectid"])
             db.insert_tasks(request["projectid"], tasks, fields)
             db.update_project(request["projectid"], projectdata)
-        return 'Project saved!'
+        return 'Tasks created!'
 
     @authlog("Assigned tasks")
     def assign_tasks(self, request):
@@ -270,7 +269,7 @@ class Projects(auth.UserAuth):
         try:
             #Create files and update fields
             textname = "text"
-            updatefields = ("textfile", "creation", "modified", "commitid", "ownership")
+            updatefields = ("textfile", "creation", "modified", "commitid")
             audiodir = os.path.dirname(row["audiofile"])
             textdirs = []
             for task in tasks:
@@ -282,11 +281,11 @@ class Projects(auth.UserAuth):
                 open(task["textfile"], "wb").close()
                 task["commitid"], task["creation"] = repo.commit(textdir, textname, "task assigned")
                 task["modified"] = task["creation"]
-                task["ownership"] = 0 #Actually need an ownership ENUM: {0: "editor", 1: "collator"}
+
             #Update fields and unlock project
             with self.db as db:
                 db.update_tasks(request["projectid"], tasks, fields=updatefields)
-                db.update_project(request["projectid"], data={"username": request["collator"], "assigned": "Y"})
+                db.update_project(request["projectid"], data={"collator" : request["collator"], "assigned": "Y"})
                 db.unlock_project(request["projectid"])
             return 'Project tasks assigned!'
         except:
@@ -302,34 +301,36 @@ class Projects(auth.UserAuth):
     @authlog("Project updated")
     def update_project(self, request):
         """Update assignees and/or other project meta-info. Can only be run
-           after task assignment.
+           after task assignment if updating tasks.
         """
-        taskupdatefields = {"editor", "speaker", "language", "ownership"}
-        projectupdatefields = {"projectname", "category", "username"}
+        taskupdatefields = {"editor", "speaker", "language", "editing"}
+        projectupdatefields = {"projectname", "category", "projectmanager", "collator", "projectstatus"}
         projectdata = dict((k, request["project"][k]) for k in projectupdatefields if k in request["project"])
-        #Check taskid in all tasks and taskids unique
-        try:
-            in_taskids = [task["taskid"] for task in request["tasks"]]
-        except KeyError:
-            raise BadRequestError("Task ID not found in input")
-        if len(in_taskids) != len(set(in_taskids)):
-            raise BadRequestError("Task IDs not unique in input")
-        in_taskids = set(in_taskids)
+        if "tasks" in request:
+            #Check taskid in all tasks and taskids unique
+            try:
+                in_taskids = [task["taskid"] for task in request["tasks"]]
+            except KeyError:
+                raise BadRequestError("Task ID not found in input")
+            if len(in_taskids) != len(set(in_taskids)):
+                raise BadRequestError("Task IDs not unique in input")
+            in_taskids = set(in_taskids)
 
         with self.db as db:
             #This will lock the DB:
             db.check_project(request["projectid"], check_err=False) #DEMIT: check_err?
-            #Check whether tasks assigned
-            if not db.project_assigned(request["projectid"]):
-                raise ConflictError("Save and assign tasks before calling update...")
-            #Check whether all taskids valid
-            curr_taskids = set(task["taskid"] for task in db.get_tasks(request["projectid"], fields=["taskid"]))
-            if not curr_taskids.issuperset(in_taskids):
-                raise BadRequestError("Invalid task ID in input")
-            #Update fields
-            for task in request["tasks"]:
-                taskfields = taskupdatefields.intersection(task)
-                db.update_tasks(request["projectid"], [task], fields=taskfields)
+            if "tasks" in request:
+                #Check whether tasks assigned
+                if not db.project_assigned(request["projectid"]):
+                    raise ConflictError("Save and assign tasks before calling update...")
+                #Check whether all taskids valid
+                curr_taskids = set(task["taskid"] for task in db.get_tasks(request["projectid"], fields=["taskid"]))
+                if not curr_taskids.issuperset(in_taskids):
+                    raise BadRequestError("Invalid task ID in input")
+                #Update fields
+                for task in request["tasks"]:
+                    taskfields = taskupdatefields.intersection(task)
+                    db.update_tasks(request["projectid"], [task], fields=taskfields)
             if projectdata:
                 db.update_project(request["projectid"], data=projectdata)
         return "Project updated!"
@@ -693,10 +694,10 @@ class ProjectDB(sqlite.Connection):
     def create_tasktable(self, year):
         table_name = "T{}".format(year)
         query = ( "CREATE TABLE IF NOT EXISTS {} ".format(table_name) +\
-                  "( taskid INTEGER, projectid VARCHAR(36), editor VARCHAR(30), speaker VARCHAR(128), "
+                  "( taskid INTEGER, projectid VARCHAR(36), editing VARCHAR(30), editor VARCHAR(30), speaker VARCHAR(128), "
                   "start REAL, end REAL, language VARCHAR(20), "
                   "textfile VARCHAR(64), creation REAL, modified REAL, commitid VARCHAR(40), "
-                  "ownership INTEGER, jobid VARCHAR(36), errstatus VARCHAR(128) )" )
+                  "completed REAL, jobid VARCHAR(36), errstatus VARCHAR(128) )" )
         self.execute(query)
 
     def insert_incoming(self, projectid, url, servicetype):
