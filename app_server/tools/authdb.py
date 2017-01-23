@@ -38,17 +38,20 @@ def create_new_db(dbfn):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("outfn", metavar="OUTFN", type=str, help="Output DB filename.")
-    parser.add_argument("rootpass", metavar="ROOTPASS", type=str, help="Password for default user 'root'.")
+    parser.add_argument("--rootpass", metavar="ROOTPASS", type=str, default=None, help="Password for default user 'root'.")
     args = parser.parse_args()
     outfn = args.outfn
 
-    try:
-        salt = bcrypt.gensalt(prefix=b"2a")
-    except:
-        salt = bcrypt.gensalt()
-    pwhash = bcrypt.hashpw(args.rootpass, salt)
-
     db_conn = create_new_db(outfn)
-    db_curs = db_conn.cursor()
-    db_curs.execute("INSERT INTO users ( username, pwhash, salt, name, surname, email, role, tmppwhash ) VALUES (?,?,?,?,?,?,?,?)", ("root", pwhash, salt, None, None, None, "admin", None))
-    db_conn.commit()
+
+    if args.rootpass is not None:
+        try:
+            salt = bcrypt.gensalt(prefix=b"2a")
+        except:
+            salt = bcrypt.gensalt()
+        pwhash = bcrypt.hashpw(args.rootpass, salt)
+
+        db_curs = db_conn.cursor()
+        db_curs.execute("INSERT INTO users ( username, pwhash, salt, name, surname, email, role, tmppwhash ) VALUES (?,?,?,?,?,?,?,?)", ("root", pwhash, salt, None, None, None, "admin", None))
+        db_conn.commit()
+

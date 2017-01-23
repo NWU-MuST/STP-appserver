@@ -88,9 +88,9 @@ class Admin(auth.UserAuth):
         users = dict()
         with sqlite.connect(self._config["target_authdb"]) as db_conn:
             db_curs = db_conn.cursor()
-            for entry in db_curs.execute("SELECT * FROM users WHERE role LIKE '%{}%'".format(request["role"])).fetchall():
+            for entry in db_curs.execute("SELECT * FROM users").fetchall():
                 username, pwhash, salt, name, surname, email, role, tmppwhash = entry
-                users[username] = {"name": name, "surname": surname, "email": email}
+                users[username] = {"name": name, "surname": surname, "email": email, "role" : role}
         LOG.info("Returning user list")
         return users
 

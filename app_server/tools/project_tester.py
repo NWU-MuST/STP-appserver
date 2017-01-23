@@ -276,7 +276,7 @@ class Test:
 
     def loadusers(self, token=None):
         LOG.debug("ENTER")
-        data = {"token": token or self.token, "role" : "project"}
+        data = {"token": token or self.token}
         result = post("projects/loadusers", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))

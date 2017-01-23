@@ -13,6 +13,7 @@ import logging
 import codecs
 import string
 import tempfile
+import subprocess
 from functools import wraps
 from types import FunctionType
 
@@ -678,6 +679,7 @@ class Editor(auth.UserAuth):
         """
             Return MS-WORD document from all the files
         """
+        #TODO: Remove <time>, <conf>, tags
         try:
             with self.db as db:
                 options = db.get_project_text(request["projectid"])
@@ -694,17 +696,25 @@ class Editor(auth.UserAuth):
 
                     self._test_read(textfile)
 
-                    with codecs.open(textfile, "r", "utf-8") as f: text = f.read()
-                    all_text.append(text)
+                    with codecs.open(textfile, "r", "utf-8") as f:
+                        text = f.read()
+                        all_text.append(text)
 
                 all_text = u"\n".join(all_text)
+                LOG.info(all_text)
                 _html = tempfile.NamedTemporaryFile(delete=False)
-                with codecs.open(_html.name, "w", "utf-8") as f: _html.write(all_text)
+                with codecs.open(_html.name, "w", "utf-8") as f:
+                    f.write(all_text)
+
                 _docx = tempfile.NamedTemporaryFile(delete=False)
                 _docx.close()
-                #os.system("pandoc -f html -t docx -o {} {}".format(_html.name, _docx.name))
-                with open(_docx.name, "w") as f:
-                    f.write("Hello World!")
+
+                cmd = "pandoc -f html -t docx -o {} {}".format(_docx.name, _html.name)
+                ps = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                stdout, stderr = ps.communicate()
+                LOG.info(stdout)
+                LOG.error(stderr)
+
                 outurl = auth.gen_token()
                 db.insert_outgoing(request["projectid"], outurl, _docx.name, "-1.0", "-1.0")
                 os.remove(_html.name)

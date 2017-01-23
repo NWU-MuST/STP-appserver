@@ -87,9 +87,12 @@ def application(env, start_response):
         if env['REQUEST_METHOD'] == 'GET':
             d = router.get(env)
             data = None
-            if 'range' not in d:
+            if 'range' not in d: # Either full audio or docx file
                 with open(d['filename'], 'rb') as infh:
                     data = infh.read()
+
+                if "audio" not in d["mime"]: # Remove any temporary file names
+                    os.remove(d["filename"])
             else:
                 (start, end) = d['range']
                 start = fix_oggsplt_time(start)

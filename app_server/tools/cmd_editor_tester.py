@@ -12,6 +12,8 @@ import random
 import math
 import logging
 import logging.handlers
+import shutil
+import codecs
 
 BASEURL = "http://127.0.0.1:9999/wsgi/"
 USERNO = 2
@@ -256,6 +258,8 @@ class Editor:
         self.this_task = None
         self.users = {}
         self.username = None
+        self.all_tasks = None
+        self._docx = "document.docx"
 
     def gen_users(self, user_number=USERNO):
         LOG.info("Generating {} users".format(user_number))
@@ -377,6 +381,7 @@ class Editor:
             print(res.status_code)
             pkg = res.json()
             if len(pkg['editor']) > 0:
+                self.all_tasks = pkg["editor"]
                 self.this_task = None
                 for this_task in pkg['editor']:
                     if this_task["jobid"] is None and this_task["errstatus"] is None:
@@ -425,7 +430,8 @@ class Editor:
         LOG.info("username={}: savetext(): Entering".format(self.username))
         if self.user_token is not None and self.projectid is not None:
             headers = {"Content-Type" : "application/json"}
-            data = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid, "text" : "Hello world!"}
+            text = codecs.open("/home/ntkleynhans/tmp.html", "r", "utf-8").read()
+            data = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid, "text" : text}
             res = requests.post(BASEURL + "editor/savetext", headers=headers, data=json.dumps(data))
             print('SERVER SAYS:', res.text)
             LOG.info("username={}: savetext(): {}".format(self.username, res.text))
@@ -433,6 +439,28 @@ class Editor:
         else:
             print("User not logged in!")
             LOG.error("username={}: savetext(): User not logged in!".format(self.username))
+        print('')
+
+    def savealltext(self):
+        """
+            Save text to all file in project
+        """
+        LOG.info("username={}: savealltext(): Entering".format(self.username))
+        if self.user_token is not None and self.projectid is not None:
+            for opt in self.all_tasks:
+                taskid = opt["taskid"]
+                projectid = opt["projectid"]
+                LOG.info("SAVE: tid={} pid={}".format(taskid, projectid))
+                headers = {"Content-Type" : "application/json"}
+                text = codecs.open("/home/ntkleynhans/tmp.html", "r", "utf-8").read()
+                data = {'token' : self.user_token, 'projectid' : projectid, 'taskid' : taskid, "text" : text}
+                res = requests.post(BASEURL + "editor/savetext", headers=headers, data=json.dumps(data))
+                print('SERVER SAYS:', res.text)
+                LOG.info("username={}: savealltext(): {}".format(self.username, res.text))
+                print(res.status_code)
+        else:
+            print("User not logged in!")
+            LOG.error("username={}: savealltext(): User not logged in!".format(self.username))
         print('')
 
     def cleartext(self):
@@ -478,7 +506,7 @@ class Editor:
         LOG.info("username={}: loadusers(): Entering".format(self.username))
         if self.user_token is not None and self.projectid is not None:
             headers = {"Content-Type" : "application/json"}
-            data = {'token' : self.user_token, "role" : "editor"}
+            data = {'token' : self.user_token}
             res = requests.post(BASEURL + "editor/loadusers", headers=headers, data=json.dumps(data))
             print('SERVER SAYS:', res.text)
             LOG.info("username={}: loadusers: {}".format(self.username, res.text))
@@ -534,6 +562,14 @@ class Editor:
             print('SERVER SAYS:', res.text)
             LOG.info("username={}: buildmaster(): {}".format(self.username, res.text))
             print(res.status_code)
+            if res.status_code == 200:
+                LOG.info("buildmaster(): Downloading MS-WORD document")
+                pkg = res.json()
+                LOG.info("Requesting URL: {}".format(BASEURL + "editor/{}".format(pkg["url"])))
+                res = requests.get(BASEURL + "editor/{}".format(pkg["url"]), stream=True)
+                with open(self._docx, "wb") as out_file:
+                    shutil.copyfileobj(res.raw, out_file)
+                LOG.info("buildmaster(): Saved - {} {} bytes".format(self._docx, os.path.getsize(self._docx)))
         else:
             print("User not logged in!")
             LOG.error("username={}: buildmaster(): User not logged in!".format(self.username))
@@ -648,12 +684,14 @@ if __name__ == "__main__":
         print("SAVETEXT - save text to file")
         print("CLEARTEXT - remove text from file")
         print("TASKDONE - set the task is done")
+        print("REASSIGNTASK - push task back to editor")
+        print("BUILDMASTER - build and download master MS-WORD file")
         print("UNLOCKTASK - cancel a speech job")
         print("CLEARERROR - remove task error status")
         print("DIARIZE - submit diarize job")
         print("RECOGNIZE - submit recognize job")
-        print("ALIGN - submit align job")
-
+        print("ALIGN - submit align job\n")
+        print("SAVEALLTEXT - save text to all tasks")
 
     elif len(sys.argv) == 2:
         if sys.argv[1].upper() == "P_ADDUSERS":
@@ -698,6 +736,12 @@ if __name__ == "__main__":
             edit.login(sys.argv[2])
             edit.loadtasks()
             edit.savetext()
+            edit.logout()
+
+        elif sys.argv[1].upper() == "SAVEALLTEXT":
+            edit.login(sys.argv[2])
+            edit.loadtasks()
+            edit.savealltext()
             edit.logout()
 
         elif sys.argv[1].upper() == "CLEARERROR":

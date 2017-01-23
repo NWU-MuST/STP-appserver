@@ -22,7 +22,7 @@
 	    "/admin/updateuser" : { "method" : "service.admin.Admin.update_user",
 					     "parameters" : ["username", "token"] },
 	    "/admin/loadusers" : { "method" : "service.admin.Admin.get_users",
-					    "parameters" : ["token", "role"] },
+					    "parameters" : ["token"] },
 	    
 	    "/projects/login" : { "method" : "service.projects.Projects.login",
 				  "parameters" : ["username", "password", "role"] },
@@ -42,7 +42,7 @@
 	    "/projects/createproject" : { "method" : "service.projects.Projects.create_project",
 					  "parameters" : ["token", "projectname", "category", "projectmanager"] },
 	    "/projects/loadusers" : { "method" : "service.projects.Projects.get_users",
-					  "parameters" : ["token", "role"] },
+					  "parameters" : ["token"] },
 	    "/projects/listprojects" : { "method" : "service.projects.Projects.list_projects",
 					 "parameters" : ["token"] },
 	    "/projects/listcreatedprojects" : { "method" : "service.projects.Projects.list_created_projects",
