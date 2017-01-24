@@ -17,12 +17,17 @@ import codecs
 import threading
 import time
 
-
+# Some constants
 BASEURL = "http://127.0.0.1:9999/wsgi/"
 USERNO = 2
+RANDOM_WAIT_LOW = 0.2
+RANDOM_WAIT_HIGH = 0.3
+
+# Readline modes
 readline.parse_and_bind('tab: complete')
 readline.parse_and_bind('set editing-mode vi')
 
+# Format the logger output
 class CustomFormatter(logging.Formatter):
     """Custom formatter, overrides funcName with value of funcname if it
        exists
@@ -58,7 +63,6 @@ def gen_str(length=5):
     return "".join(random.choice(alphabet) for i in range(length))
 
 # Thin project implementation
-#TODO: source from project_tester.py
 class Project:
 
     def __init__(self):
@@ -70,7 +74,10 @@ class Project:
         self.test_audio_duration = 5.154830
 
     def gen_users(self, user_number=USERNO):
-        LOG.info("Generating {} users".format(user_number))
+        """
+            Generate some project managers
+        """
+        LOG.info("Generating {} project managers".format(user_number))
         for i in range(user_number):
             usr = 'usr{}'.format(str(i).zfill(3))
             self.users[usr] = {}
@@ -92,13 +99,12 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"username": "root", "password": "123456", "role" : "admin"}
             res = requests.post(BASEURL + "admin/login", headers=headers, data=json.dumps(data))
-            print('adminlin(): SERVER SAYS:', res.text)
-            print(res.status_code)
+            LOG.info('adminlin(): SERVER SAYS:', res.text)
+            LOG.info(res.status_code)
             pkg = res.json()
             self.admin_token = pkg['token']
         else:
-            print("Admin logged in already!")
-        print('')
+            LOG.info("Admin logged in already!")
 
     def adminlout(self):
         """
@@ -109,11 +115,10 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.admin_token}
             res = requests.post(BASEURL + "admin/logout", headers=headers, data=json.dumps(data))
-            print('adminlout(): SERVER SAYS:', res.text)
+            LOG.info('adminlout(): SERVER SAYS:', res.text)
             self.admin_token = None
         else:
-            print("Admin not logged in!")
-        print('')
+            LOG.info("Admin not logged in!")
 
     def adduser(self, user):
         """
@@ -130,11 +135,10 @@ class Project:
              "name": self.users[user]["name"], "surname": self.users[user]["surname"], "email": self.users[user]["email"],
              "role": self.users[user]["role"]}
             res = requests.post(BASEURL + "admin/adduser", headers=headers, data=json.dumps(data))
-            print('adduser(): SERVER SAYS:', res.text)
-            print(res.status_code)
+            LOG.info('adduser(): SERVER SAYS:', res.text)
+            LOG.info(res.status_code)
         else:
-            print("Admin not logged in!")
-        print('')
+            LOG.info("Admin not logged in!")
 
     def login(self, user):
         """
@@ -150,12 +154,11 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"username": self.users[user]["username"], "password": self.users[user]["password"], "role" : self.users[user]["role"]}
             res = requests.post(BASEURL + "projects/login", headers=headers, data=json.dumps(data))
-            print('login(): SERVER SAYS:', res.text)
+            LOG.info('login(): SERVER SAYS:', res.text)
             pkg = res.json()
             self.user_token = pkg['token']
         else:
-            print("User logged in already!")
-        print('')
+            LOG.info("User logged in already!")
 
     def logout(self):
         """
@@ -165,11 +168,10 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.user_token}
             res = requests.post(BASEURL + "projects/logout", headers=headers, data=json.dumps(data))
-            print('logout(): SERVER SAYS:', res.text)
+            LOG.info('logout(): SERVER SAYS:', res.text)
             self.user_token = None
         else:
-            print("User not logged in!")
-        print('')
+            LOG.info("User not logged in!")
 
     def createproject(self):
         """
@@ -181,13 +183,12 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.user_token, "projectname" : gen_str(10), "category" : "NCOP", "projectmanager" : random.choice(self.users.keys()) }
             res = requests.post(BASEURL + "projects/createproject", headers=headers, data=json.dumps(data))
-            print('createproject(): SERVER SAYS:', res.text)
-            print(res.status_code)
+            LOG.info('createproject(): SERVER SAYS:', res.text)
+            LOG.info(res.status_code)
             pkg = res.json()
             self.projectid = pkg['projectid']
         else:
-            print("User not logged in!")
-        print('')
+            LOG.info("User not logged in!")
 
     def uploadaudio(self):
         """
@@ -195,17 +196,16 @@ class Project:
             Requires tallship.ogg to be located in current location
         """
         if not os.path.exists('tallship.ogg'):
-            print('Cannot run UPLOADAUDIO as "tallship.ogg" does not exist in current path')
+            LOG.error('Cannot run UPLOADAUDIO as "tallship.ogg" does not exist in current path')
             return
 
         if self.user_token is not None and self.projectid is not None:
             files = {'file' : open(self.test_audio, 'rb'), 'filename' : 'tallship.ogg', 'token' : self.user_token, 'projectid' : self.projectid}
             res = requests.post(BASEURL + "projects/uploadaudio", files=files)
-            print('uploadaudio(): SERVER SAYS:', res.text)
-            print(res.status_code)
+            LOG.info('uploadaudio(): SERVER SAYS:', res.text)
+            LOG.info(res.status_code)
         else:
-            print("User not logged in!")
-        print('')
+            LOG.info("User not logged in!")
 
     def createtasks(self):
         """
@@ -231,11 +231,10 @@ class Project:
             project = {"projectname": gen_str(10)}
             data = {"token": self.user_token, "projectid" : self.projectid, "tasks": tasks, "project": project}
             res = requests.post(BASEURL + "projects/createtasks", headers=headers, data=json.dumps(data))
-            print('createtasks(): SERVER SAYS:', res.text)
-            print(res.status_code)
+            LOG.info('createtasks(): SERVER SAYS:', res.text)
+            LOG.info(res.status_code)
         else:
-            print("User not logged in!")
-        print('')
+            LOG.info("User not logged in!")
 
     def assigntasks(self):
         """
@@ -246,13 +245,13 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.user_token, "projectid" : self.projectid, "collator" : "e{}".format(random.choice(self.users.keys()))}
             res = requests.post(BASEURL + "projects/assigntasks", headers=headers, data=json.dumps(data))
-            print('assigntasks(): SERVER SAYS:', res.text)
-            print(res.status_code)
+            LOG.info('assigntasks(): SERVER SAYS:', res.text)
+            LOG.info(res.status_code)
         else:
-            print("User not logged in!")
-        print('')
+            LOG.info("User not logged in!")
 
 
+# Editor client wrappers
 class Editor:
 
     def __init__(self):
@@ -265,7 +264,10 @@ class Editor:
         self._docx = "document.docx"
 
     def gen_users(self, user_number=USERNO):
-        LOG.info("Generating {} users".format(user_number))
+        """
+            Generate some editors
+        """
+        LOG.info("Generating {} editors".format(user_number))
         for i in range(user_number):
             usr = 'eusr{}'.format(str(i).zfill(3))
             self.users[usr] = {}
@@ -293,13 +295,14 @@ class Editor:
             data = {"username": self.users[user]["username"], "password": self.users[user]["password"], "role" : self.users[user]["role"]}
             res = requests.post(BASEURL + "editor/login", headers=headers, data=json.dumps(data))
             print('login(): SERVER SAYS:', res.text)
+            print(res.status_code)
             LOG.info('username={}: login(): SERVER SAYS: {}'.format(self.users[user]["username"], res.text))
             pkg = res.json()
             self.user_token = pkg['token']
             self.username = self.users[user]["username"]
         else:
             print("User logged in already!")
-            LOG.error("username={}: login(): User logged in already!")
+            LOG.error("username={}: login(): User logged in already!".format(user))
         print('')
 
     def adminlin(self):
@@ -313,10 +316,12 @@ class Editor:
             res = requests.post(BASEURL + "admin/login", headers=headers, data=json.dumps(data))
             print('SERVER SAYS:', res.text)
             print(res.status_code)
+            LOG.info('adminlin(): SERVER SAYS: {}'.format(res.text))
             pkg = res.json()
             self.admin_token = pkg['token']
         else:
             print("Admin logged in already!")
+            LOG.error("adminlin(): Admin logged in already!")
         print('')
 
     def adminlout(self):
@@ -328,9 +333,12 @@ class Editor:
             data = {"token": self.admin_token}
             res = requests.post(BASEURL + "admin/logout", headers=headers, data=json.dumps(data))
             print('SERVER SAYS:', res.text)
+            print(res.status_code)
+            LOG.info('adminlout(): SERVER SAYS: {}'.format(res.text))
             self.admin_token = None
         else:
             print("Admin not logged in!")
+            LOG.error("adminlout(): Admin not logged in!")
         print('')
 
     def logout(self):
@@ -343,6 +351,7 @@ class Editor:
             data = {"token": self.user_token}
             res = requests.post(BASEURL + "editor/logout", headers=headers, data=json.dumps(data))
             print('SERVER SAYS:', res.text)
+            print(res.status_code)
             LOG.info("username={}: logout(): SERVER SAYS: {}".format(self.username, res.text))
             self.user_token = None
         else:
@@ -365,10 +374,11 @@ class Editor:
                     "name": self.users[user]["name"], "surname": self.users[user]["surname"], "email": self.users[user]["email"],
                     "role" : self.users[user]["role"]}
             res = requests.post(BASEURL + "admin/adduser", headers=headers, data=json.dumps(data))
-            print('adduser(): SERVER SAYS:', res.text)
-            print(res.status_code)
+            print('SERVER SAYS:', res.text)
+            LOG.info('adduser(): SERVER SAYS: {}'.format(res.text))
         else:
             print("Admin not logged in!")
+            LOG.error("adduser(): Admin not logged in!")
         print('')
 
     def loadtasks(self):
@@ -690,7 +700,7 @@ class Worker(threading.Thread):
             else:
                 state = "error"
 
-            rand_sleep = random.uniform(0.2,0.25)
+            rand_sleep = random.uniform(RANDOM_WAIT_LOW, RANDOM_WAIT_HIGH)
             LOG.info("user={} thread#={} state={} waiting {}".format(self.user, self.thread_number, state, rand_sleep))
             time.sleep(rand_sleep)
 
@@ -706,18 +716,18 @@ if __name__ == "__main__":
     edit = Editor()
 
     # Not including taskdone as this will reduce the number of tasks one by one
-    Paths = {"login" : ["loadtasks" ],
-             "loadtasks" : ["gettext", "getaudio", "savetext", "cleartext"],
-             "savetext" : ["recognize", "align", "savetext"],
-            "gettext" : ["gettext", "getaudio", "savetext", "cleartext"],
-            "getaudio" : ["gettext", "getaudio", "savetext", "cleartext"],
-            "loadusers" : ["gettext", "getaudio", "savetext", "cleartext"],
+    Paths = {"login" : ["loadtasks"],
+             "loadtasks" : ["gettext", "getaudio", "savetext", "savealltext", "cleartext"],
+             "savetext" : ["recognize", "align", "savealltext"],
+            "gettext" : ["getaudio", "savetext", "savealltext", "cleartext"],
+            "getaudio" : ["gettext", "savetext", "savealltext", "cleartext"],
+            "loadusers" : ["gettext", "getaudio", "savetext", "savealltext", "cleartext"],
             "unlocktask" : ["loadtasks"],
             "clearerror" : ["unlocktask", "logout"],
-            "cleartext" : ["diarize"],
-            "diarize" : ["unlocktask", "align", "recognize", "savetext", "cleartext"],
-            "recognize" : ["unlocktask", "align", "recognize", "savetext", "cleartext"],
-            "align" : ["unlocktask", "recognize", "savetext", "cleartext"],
+            "cleartext" : ["diarize", "savealltext", "savetext"],
+            "diarize" : ["unlocktask", "align", "recognize", "savetext", "savealltext", "cleartext"],
+            "recognize" : ["unlocktask", "align", "recognize", "savetext", "savealltext", "cleartext"],
+            "align" : ["unlocktask", "recognize", "savetext", "savealltext", "cleartext"],
             "logout" : ["login"],
             "error" : ["clearerror"]
     }
@@ -746,6 +756,7 @@ if __name__ == "__main__":
         print("REASSIGNTASKS - push task ownership back to editor")
         print("BUILDMASTER - collate task text and build MS-WORD document")
 
+        print("Simulate some random editor workflows")
         print("SIMULATE - randomly run through possibilities. YOU MUST RUN P_ASSUSERS, ADDPROJECT and E_ADDUSERS FIRST!!!")
 
     elif len(sys.argv) == 2:
