@@ -15,6 +15,7 @@ This directory contains the files necessary to build a Docker image. To build, p
 ```
 
 Edit `FSUID` variable found in `Dockerfile`, if needed. This should be the same as your host system UID.
+Edit IP addresses found in variables `SPEECHSERVER` and `APPSERVER` - these should be the same as the host system.
 
 To build the docker image run:
 
@@ -34,14 +35,14 @@ mkdir ~/stp
 Set up two new authentication databases, for the main (projects, editor) and admin services, in this directory using the `authdb.py` tool (these files should match the setup in `app_server/config/dispatcher.json`:
 
 ```bash
-python stp/app_server/tools/authdb.py ~/stp/auth.db <rootpass>
-python stp/app_server/tools/authdb.py ~/stp/admin.db <rootpass>
+python stp/app_server/tools/authdb.py ~/stp/auth.db
+python stp/app_server/tools/authdb.py --rootpass <rootpass> ~/stp/admin.db <rootpass>
 ```
 
-Open another terminal and start simple speech server located in `~/stp/app_server/tools/`
+Open another terminal, edit the code if needed and then start simple speech server located in `~/stp/app_server/tools/`
 
 ```
-$ ./dummy_speech_server.py
+$ ./simple_speech_server.py
 ```
 
 Run the docker image making sure to mount the host directory created above and designate a host port for usage (`9999` in this case):
@@ -81,3 +82,4 @@ To stop and remove the docker container run the following:
 docker stop stp
 docker rm stp
 ```
+

@@ -82,7 +82,7 @@ Setup authentication databases using `./app_server/tools/authdb.py`
 
 ```
 $ mkdir ~/stp
-$ ./app_server/tools/authdb.py ~/stp/admin.db
+$ ./app_server/tools/authdb.py --rootpass ROOT_PASSWORD ~/stp/admin.db
 $ ./app_server/tools/authdb.py ~/stp/auth.db
 ```
 Setup project databases using `./app_server/tools/projectdb.py`
@@ -97,8 +97,7 @@ $ ./app_server/tools/authdb.py ~/stp/projects.db
 Testing tools are located in `./app_server/tools/`
 
 * project_tester.py - Project interface tester
-* sim_editor_tester.py - Automatic editor interface workflow simulation tester
-* cmd_editor_tester.py - One-shot editor interface tester
+* editor_tester.py - Editor interface tester
 
 For more information see `./app_server/tools/README.md`
 

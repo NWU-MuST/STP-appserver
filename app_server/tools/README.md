@@ -2,10 +2,11 @@
 
 ## authdb.py
 
-Used to create a admin and user authentication databases for different services:
+Used to create an admin and user authentication databases for different services:
 
 ```
-./authdb.py /path/to/database/name.db rootpass
+./authdb.py --rootpass rootpass /path/to/database/admin.db
+./authdb.py /path/to/database/auth.db
 ```
 
 This tool should be used to create a single authentication database for project and editor and a single administration database.
@@ -173,16 +174,19 @@ To test the functionality you type the command and hit enter.
 
 * Quit the script and logout as user and admin, if logged in.
 
-## dummy_speech_server
+## simple_speech_server
 
 Simulates a speech server with limited functionality.  
-Need to run this before running any editor testers
+Need to run this before running any editor testers.
+You may have to edit the IP and port
 
 ```
-./dummy_speech_server.py
+./simple_speech_server.py
 ```
 
-## sim_editor_tester
+## editor_tester
+
+### Simulation mode
 
 Simulates a number of editors accessing the application server.  
 Before running the simulation the dummy speech server must be running.  
@@ -195,13 +199,13 @@ To run the editor tester you must running the code in the following order.
 
 Below is the commands run in the CLI:
 ```
-$ ./sim_editor_tester.py P_ADDUSERS
-$ ./sim_editor_tester.py ADDPROJECT
-$ ./sim_editor_tester.py E_ADDUSERS
-$ ./sim_editor_tester.py SIMULATE
+$ ./editor_tester.py P_ADDUSERS
+$ ./editor_tester.py ADDPROJECT
+$ ./editor_tester.py E_ADDUSERS
+$ ./editor_tester.py SIMULATE
 ```
 
-## cmd_editor_tester
+### Command line mode
 
 This version of the editor tester runs in an one-shot mode i.e. you call each command seperately.  
 Before testing the editor you should create projects, add project users and add editor users.  
@@ -222,7 +226,7 @@ The user name can be in the range of `usr001` to `usr020`.
 
 E.G.
 ```
-./cmd_editor_tester.py <COMMAND> usr001
+./editor_tester.py <COMMAND> usr001
 ```
 
 ### GETAUDIO
@@ -233,6 +237,9 @@ E.G.
 
 ### SAVETEXT
 * Save text to file
+
+### SAVEALLTEXT
+* Save text to all tasks in project
 
 ### CLEARTEXT
 * Remove text from file
@@ -254,4 +261,20 @@ E.G.
 
 ### ALIGN
 * Submit align job
+
+
+## Collator testing
+
+The editor tester can also test the following collator functionality in command line mode:
+
+E.G.
+```
+./editor_tester.py <COMMAND> usr001
+```
+
+### REASSIGNTASK
+* Assign task back to editor
+
+### BUILDMASTER
+* Collate all project text and build a MS-WORD document
 
