@@ -91,7 +91,7 @@ def application(env, start_response):
                 with open(d['filename'], 'rb') as infh:
                     data = infh.read()
 
-                if "audio" not in d["mime"]: # Remove any temporary file names
+                if "audio" not in d["mime"]: # Remove any temporary files
                     os.remove(d["filename"])
             else:
                 (start, end) = d['range']
