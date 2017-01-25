@@ -98,6 +98,8 @@ class Editor(auth.UserAuth):
             LOG.debug("{}".format(editor_tasks))
             collator_tasks = db.get_all_tasks(username, mode="collator")
             LOG.debug("{}".format(collator_tasks))
+            if type(collator_tasks) in [str, unicode]:
+                collator_tasks = []
             tasks = {"editor" : editor_tasks, "collator" : collator_tasks }
 
         return tasks
@@ -679,7 +681,6 @@ class Editor(auth.UserAuth):
         """
             Return MS-WORD document from all the files
         """
-        #TODO: Remove <time>, <conf>, tags
         try:
             with self.db as db:
                 options = db.get_project_text(request["projectid"])
@@ -840,7 +841,10 @@ class EditorDB(sqlite.Connection):
         # Fetch all tasks
         raw_tasks = []
         for projectid, projectname, category, year in years:
-            _tmp = self.execute("SELECT * FROM T{} WHERE projectid=? AND editor=?".format(year), (projectid, this_user,)).fetchall()
+            if mode == "editor":
+                _tmp = self.execute("SELECT * FROM T{} WHERE projectid=? AND editor=?".format(year), (projectid, this_user,)).fetchall()
+            elif mode == "collator":
+                _tmp = self.execute("SELECT * FROM T{} WHERE projectid=?".format(year), (projectid,)).fetchall()
 
             if _tmp is not None:
                 _tmp = map(dict, _tmp)
