@@ -5,7 +5,7 @@ MAINTAINER Daniel van Niekerk <dvn.demitasse@gmail.com>
 LABEL Description="Basic STP platform served over HTTP using Apache"
 
 #Install standard tools from Ubuntu repo
-RUN apt-get update && apt-get install -y apache2 libapache2-mod-proxy-uwsgi uwsgi uwsgi-plugin-python patch python python-bcrypt python-requests python-git sox mp3splt pandoc
+RUN apt-get clean all && apt-get update && apt-get install -y apache2 libapache2-mod-proxy-uwsgi uwsgi uwsgi-plugin-python patch python python-bcrypt python-requests python-git sox libsox-fmt-all mp3splt pandoc vorbis-tools
 
 #Configure Apache to forward requests (uWSGI)
 COPY stp/install/* /etc/apache2/sites-available/

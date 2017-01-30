@@ -12,9 +12,17 @@ import logging.handlers
 import subprocess
 import datetime
 import math
+import fcntl
+import tempfile
 
 from dispatcher import Dispatch
 from service.httperrs import *
+
+# Check binaries are installed
+MP3SPLT="/usr/bin/mp3splt"; assert os.stat(MP3SPLT)
+OGGENC="/usr/bin/oggenc"; assert os.stat(OGGENC)
+OGGDEC="/usr/bin/oggdec"; assert os.stat(OGGDEC)
+SOX="/usr/bin/sox"; assert(os.stat(SOX))
 
 #SETUP LOGGING
 
@@ -69,6 +77,8 @@ def build_json_response(data):
     return response, response_header
 
 def fix_oggsplt_time(realtime):
+    """ Convert seconds to weird MP3splt time format XX:XX:XX.XX
+    """
     dt = datetime.timedelta(seconds=float(realtime))
     dts = str(dt)
     (hour, minute, second) = dts.split(":")
@@ -76,6 +86,7 @@ def fix_oggsplt_time(realtime):
     second = int(math.ceil(float(second)))
     return "{}.{}".format(minute, second)
 
+# Cross domain access
 ALLOW = [("Access-Control-Allow-Origin", "*"), ("Access-Control-Allow-Methods", "POST, PUT, GET, OPTIONS"),
         ("Access-Control-Allow-Headers", "Content-Type") ,("Access-Control-Max-Age", "86400"), ('Content-Type','application/json')]
 
@@ -83,31 +94,81 @@ ALLOW = [("Access-Control-Allow-Origin", "*"), ("Access-Control-Allow-Methods", 
 def application(env, start_response):
     LOG.debug("Request: {}".format(env))
     try:
-
         if env['REQUEST_METHOD'] == 'GET':
             d = router.get(env)
             data = None
-            if 'range' not in d: # Either full audio or docx file
+            response_header = []
+            tmpin = tempfile.NamedTemporaryFile(delete=False)
+            tmpin.close()
+            tmpout = tempfile.NamedTemporaryFile(delete=False)
+            tmpout.close()
+
+            LOG.info("{}".format(d))
+            if "audio" in d["mime"]: # Send back audio
+                LOG.info(d["mime"])
+                error = ""
+                if "range" in d:
+                    (start, end) = d['range']
+                    start = fix_oggsplt_time(start)
+                    end = fix_oggsplt_time(end)
+
+                    mp3splt = subprocess.Popen((MP3SPLT, d["filename"], start, end, "-d", "/tmp", "-o", os.path.basename(tmpout.name)), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    mp3splt_stdo, mp3splt_stde = mp3splt.communicate()
+                    LOG.info(mp3splt_stdo)
+                    error = "{}{}".format(error, mp3splt_stde)
+
+                    oggdec = subprocess.Popen((OGGDEC, "-o", tmpin.name, "{}.ogg".format(tmpout.name)), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    oggdec_stdo, oggdec_stde = oggdec.communicate()
+                    LOG.info(oggdec_stdo)
+                    error = "{}{}".format(error, oggdec_stde)
+                    
+                    sox = subprocess.Popen((SOX, "-t", "wav", tmpin.name, "-t", "wav", tmpout.name, "gain", "-n"), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    sox_stdo, sox_stde = sox.communicate()
+                    LOG.info(sox_stdo)
+                    error="{}{}".format(error, sox_stde)
+                   
+                    oggenc = subprocess.Popen((OGGENC, "-o", tmpin.name, tmpout.name), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    oggenc_stdo, oggenc_stde = oggenc.communicate()
+                    LOG.info(oggenc_stdo)
+                    error = "{}{}".format(error, oggenc_stde)
+
+                    with open(tmpin.name, "rb") as f:
+                        data = f.read()
+                    os.remove("{}.ogg".format(tmpout.name))
+                else:
+                    oggdec = subprocess.Popen((OGGDEC, "-o", tmpin.name, d["filename"]), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    oggdec_stdo, oggdec_stde = oggdec.communicate()
+                    LOG.info(oggdec_stdo)
+                    error = "{}{}".format(error, oggdec_stde)
+
+                    sox = subprocess.Popen((SOX, "-t", "wav", tmpin.name, "-t", "wav", tmpout.name, "gain", "-n"), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    sox_stdo, sox_stde = sox.communicate()
+                    LOG.info(sox_stdo)
+                    error="{}{}".format(error, sox_stde)
+
+                    oggenc = subprocess.Popen((OGGENC, "-o", tmpin.name, tmpout.name), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    oggenc_stdo, oggenc_stde = oggenc.communicate()
+                    LOG.info(oggenc_stdo)
+                    error = "{}{}".format(error, oggenc_stde)
+
+                    with open(tmpin.name, "rb") as f:
+                        data = f.read()
+
+                os.remove(tmpin.name)
+                os.remove(tmpout.name)
+                LOG.info(error)
+                LOG.info(len(data))
+                if error.lower().find('error:') != -1:
+                    LOG.error(error)
+                    raise RuntimeError("Cannot supply task's audio data!")
+    
+            else: # Send back MS-WORD document
                 with open(d['filename'], 'rb') as infh:
                     data = infh.read()
+                os.remove(d["filename"])
+                response_header = [("Content-Disposition", 'attachment; filename="{}"'.format(d["savename"]))]
 
-                if "audio" not in d["mime"]: # Remove any temporary files
-                    os.remove(d["filename"])
-            else:
-                (start, end) = d['range']
-                start = fix_oggsplt_time(start)
-                end = fix_oggsplt_time(end)
-                cmd = "mp3splt {} {} {} -o -".format(d["filename"], start, end)
-                p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
-                (child_stdout, child_stderr) = (p.stdout, p.stderr)
-                data = child_stdout.read()
-                # MP3SPLT writes to stderr - just parse for errors
-                err = child_stderr.read()
-                if err.lower().find('error:') != -1 or err.lower().find('warning:') != -1:
-                    LOG.error(err)
-                    raise RuntimeError("Cannot supply task's audio data!")
-
-            response_header = [('Content-Type', str(d["mime"])), ('Content-Length', str(len(data)))]
+            response_header.extend([('Content-Type', str(d["mime"])), ('Content-Length', str(len(data)))])
             start_response('200 OK', response_header + ALLOW)
             return [data]
 
@@ -168,4 +229,3 @@ def application(env, start_response):
         response, response_header = build_json_response(e)
         start_response("500 Internal Server Error", response_header)
         return [response]
-

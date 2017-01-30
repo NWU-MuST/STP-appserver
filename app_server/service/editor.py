@@ -430,11 +430,13 @@ class Editor(auth.UserAuth):
                 if not row:
                     raise MethodNotAllowedError(uri)
                 LOG.info("Returning audio for project ID: {}".format(row["projectid"]))
+                projectname = db.get_project(row["projectid"], fields=["projectname"])["projectname"]
 
                 # Check if audio range is available
                 if row["start"] is not None and row["end"] is not None:
                     if float(row["start"]) == -1.0 and float(row["end"]) == -1.0:
-                        return {"mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "filename": row["audiofile"]}
+                        return {"mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                "filename": row["audiofile"], "savename" : "{}.docx".format(projectname)}
                     else:
                         return {"mime": "audio/ogg", "filename": row["audiofile"], "range" : (float(row["start"]), float(row["end"]))}
                 else:
