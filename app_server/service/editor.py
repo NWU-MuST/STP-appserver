@@ -104,6 +104,18 @@ class Editor(auth.UserAuth):
 
         return tasks
 
+    @authlog("Return a specific task")
+    def load_task(self, request):
+        """
+            Load a specific task
+        """
+        with self.db as db:
+            db.check_project_task(request["projectid"], request["taskid"], check_err=True)
+            project = db.get_project(request["projectid"], fields=["year"])
+            year = project["year"]
+            task_info = db.get_task_field(request["projectid"], request["taskid"], year, fields=["projectid", "taskid", "editor", "modified", "completed", "jobid", "errstatus"])
+        return task_info
+
     def _test_read(self, filename):
         """
             Check if a file can be opened

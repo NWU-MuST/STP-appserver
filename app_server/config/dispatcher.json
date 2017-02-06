@@ -23,7 +23,9 @@
 					     "parameters" : ["username", "token"] },
 	    "/admin/loadusers" : { "method" : "service.admin.Admin.get_users",
 					    "parameters" : ["token"] },
-	    
+            "/admin/customlm" : { "method" : "service.admin.Admin.custom_lm",
+					    "parameters" : ["token", "filename", "file"] },
+ 
 	    "/projects/login" : { "method" : "service.projects.Projects.login",
 				  "parameters" : ["username", "password", "role"] },
 	    "/projects/logout" : { "method" : "service.projects.Projects.logout",
@@ -72,6 +74,8 @@
 				    "parameters" : ["username", "password"] },
 	    "/editor/loadtasks" : { "method" : "service.editor.Editor.load_tasks",
 				   "parameters" : ["token"] },
+            "/editor/loadtask" : { "method" : "service.editor.Editor.load_task",
+				   "parameters" : ["token", "projectid", "taskid"] },
 	    "/editor/gettext" : { "method" : "service.editor.Editor.get_text",
 				   "parameters" : ["token", "taskid", "projectid"] },
 	    "/editor/savetext" : { "method" : "service.editor.Editor.save_text",

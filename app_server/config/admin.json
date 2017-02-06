@@ -2,5 +2,6 @@
  "target_authdb": "/mnt/stp/auth.db",
  "projectdb": "/mnt/stp/projects.db",
  "toklife": 31536000,
- "role" : "admin"
+ "role" : "admin",
+ "speechservices": {"customlm": "jobs/addjob"}
 }

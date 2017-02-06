@@ -99,7 +99,7 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"username": "root", "password": "123456", "role" : "admin"}
             res = requests.post(BASEURL + "admin/login", headers=headers, data=json.dumps(data))
-            LOG.info('adminlin(): SERVER SAYS:', res.text)
+            LOG.info('adminlin(): SERVER SAYS:{}'.format(res.text))
             LOG.info(res.status_code)
             pkg = res.json()
             self.admin_token = pkg['token']
@@ -115,7 +115,7 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.admin_token}
             res = requests.post(BASEURL + "admin/logout", headers=headers, data=json.dumps(data))
-            LOG.info('adminlout(): SERVER SAYS:', res.text)
+            LOG.info('adminlout(): SERVER SAYS:{}'.format(res.text))
             self.admin_token = None
         else:
             LOG.info("Admin not logged in!")
@@ -135,7 +135,7 @@ class Project:
              "name": self.users[user]["name"], "surname": self.users[user]["surname"], "email": self.users[user]["email"],
              "role": self.users[user]["role"]}
             res = requests.post(BASEURL + "admin/adduser", headers=headers, data=json.dumps(data))
-            LOG.info('adduser(): SERVER SAYS:', res.text)
+            LOG.info('adduser(): SERVER SAYS:{}'.format(res.text))
             LOG.info(res.status_code)
         else:
             LOG.info("Admin not logged in!")
@@ -154,7 +154,7 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"username": self.users[user]["username"], "password": self.users[user]["password"], "role" : self.users[user]["role"]}
             res = requests.post(BASEURL + "projects/login", headers=headers, data=json.dumps(data))
-            LOG.info('login(): SERVER SAYS:', res.text)
+            LOG.info('login(): SERVER SAYS:{}'.format(res.text))
             pkg = res.json()
             self.user_token = pkg['token']
         else:
@@ -168,7 +168,7 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.user_token}
             res = requests.post(BASEURL + "projects/logout", headers=headers, data=json.dumps(data))
-            LOG.info('logout(): SERVER SAYS:', res.text)
+            LOG.info('logout(): SERVER SAYS:{}'.format(res.text))
             self.user_token = None
         else:
             LOG.info("User not logged in!")
@@ -183,7 +183,7 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.user_token, "projectname" : gen_str(10), "category" : "NCOP", "projectmanager" : random.choice(self.users.keys()) }
             res = requests.post(BASEURL + "projects/createproject", headers=headers, data=json.dumps(data))
-            LOG.info('createproject(): SERVER SAYS:', res.text)
+            LOG.info('createproject(): SERVER SAYS:{}'.format(res.text))
             LOG.info(res.status_code)
             pkg = res.json()
             self.projectid = pkg['projectid']
@@ -202,7 +202,7 @@ class Project:
         if self.user_token is not None and self.projectid is not None:
             files = {'file' : open(self.test_audio, 'rb'), 'filename' : 'tallship.ogg', 'token' : self.user_token, 'projectid' : self.projectid}
             res = requests.post(BASEURL + "projects/uploadaudio", files=files)
-            LOG.info('uploadaudio(): SERVER SAYS:', res.text)
+            LOG.info('uploadaudio(): SERVER SAYS:{}'.format(res.text))
             LOG.info(res.status_code)
         else:
             LOG.info("User not logged in!")
@@ -231,7 +231,7 @@ class Project:
             project = {"projectname": gen_str(10)}
             data = {"token": self.user_token, "projectid" : self.projectid, "tasks": tasks, "project": project}
             res = requests.post(BASEURL + "projects/createtasks", headers=headers, data=json.dumps(data))
-            LOG.info('createtasks(): SERVER SAYS:', res.text)
+            LOG.info('createtasks(): SERVER SAYS:{}'.format(res.text))
             LOG.info(res.status_code)
         else:
             LOG.info("User not logged in!")
@@ -245,7 +245,7 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.user_token, "projectid" : self.projectid, "collator" : "e{}".format(random.choice(self.users.keys()))}
             res = requests.post(BASEURL + "projects/assigntasks", headers=headers, data=json.dumps(data))
-            LOG.info('assigntasks(): SERVER SAYS:', res.text)
+            LOG.info('assigntasks(): SERVER SAYS:{}'.format(res.text))
             LOG.info(res.status_code)
         else:
             LOG.info("User not logged in!")
@@ -414,6 +414,24 @@ class Editor:
             print("User not logged in!")
             LOG.error("username={}: loadtasks(): User not logged in!".format(self.username))
         print('')
+
+    def loadtask(self):
+        """
+            Load data from a specific task
+        """
+        LOG.info("username={}: loadtask(): Entering".format(self.username))
+        if self.user_token is not None and self.projectid is not None:
+            headers = {"Content-Type" : "application/json"}
+            data = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid}
+            res = requests.post(BASEURL + "editor/loadtask", headers=headers, data=json.dumps(data))
+            print('SERVER SAYS:', res.text)
+            LOG.info("username={}: loadtask(): {}".format(self.username, res.text))
+            print(res.status_code)
+        else:
+            print("User not logged in!")
+            LOG.error("username={}: loadtask(): User not logged in!".format(self.username))
+        print('')
+
 
     def getaudio(self):
         """
@@ -817,6 +835,12 @@ if __name__ == "__main__":
         if sys.argv[1].upper() == "LOADTASKS":
             edit.login(sys.argv[2])
             edit.loadtasks()
+            edit.logout()
+
+        elif sys.argv[1].upper() == "LOADTASK":
+            edit.login(sys.argv[2])
+            edit.loadtasks()
+            edit.loadtask()
             edit.logout()
 
         elif sys.argv[1].upper() == "SAVETEXT":
