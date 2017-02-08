@@ -38,8 +38,8 @@ class CustomFormatter(logging.Formatter):
         return super(CustomFormatter, self).format(record)
 
 # Editor testing logging
-LOGNAME = "EDITORTEST"
-LOGFNAME = "editor_tester.log"
+LOGNAME = "ADMINTEST"
+LOGFNAME = "admin_tester.log"
 LOGLEVEL = logging.DEBUG
 try:
     fmt = "%(asctime)s [%(levelname)s] %(name)s in %(funcName)s(): %(message)s"
@@ -63,13 +63,14 @@ def gen_str(length=5):
     return "".join(random.choice(alphabet) for i in range(length))
 
 # Thin project implementation
-class Project:
+class Admin:
 
     def __init__(self):
         self.user_token = None
         self.admin_token = None
         self.username = "john"
         self.password = "doe"
+        self.custom_text_file = "customlm.txt"
 
     def adminlin(self):
         """
@@ -81,7 +82,8 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"username": "root", "password": "123456", "role" : "admin"}
             res = requests.post(BASEURL + "admin/login", headers=headers, data=json.dumps(data))
-            LOG.info('adminlin(): SERVER SAYS:', res.text)
+            LOG.info('adminlin(): SERVER SAYS:{}'.format(res.text))
+            print('adminlin(): SERVER SAYS:{}'.format(res.text))
             LOG.info(res.status_code)
             pkg = res.json()
             self.admin_token = pkg['token']
@@ -97,26 +99,24 @@ class Project:
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.admin_token}
             res = requests.post(BASEURL + "admin/logout", headers=headers, data=json.dumps(data))
-            LOG.info('adminlout(): SERVER SAYS:', res.text)
+            LOG.info('adminlout(): SERVER SAYS:{}'.format(res.text))
+            print('adminlout(): SERVER SAYS:{}'.format(res.text))
             self.admin_token = None
         else:
             LOG.info("Admin not logged in!")
 
-    def adduser(self, user):
+    def adduser(self):
         """
             Add automatically generated users to database
         """
-        if user not in self.users.keys():
-            LOG.error("{} not in user list".format(user))
-            return
-
         if self.admin_token is not None:
-            LOG.info("Adding user {}".format(user))
+            LOG.info("Adding user {}".format(self.username))
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.admin_token, "username": self.username, "password": self.password,
              "name": "John", "surname": "Doe", "email": "john@doe.com", "role": "admin"}
             res = requests.post(BASEURL + "admin/adduser", headers=headers, data=json.dumps(data))
-            LOG.info('adduser(): SERVER SAYS:', res.text)
+            LOG.info('adduser(): SERVER SAYS:{}'.format(res.text))
+            print('adduser(): SERVER SAYS:{}'.format(res.text))
             LOG.info(res.status_code)
         else:
             LOG.info("Admin not logged in!")
@@ -125,12 +125,13 @@ class Project:
         """
             Login as admin user
         """
-        if self.admin_token is None:
+        if self.user_token is None:
             LOG.info("Admin logging in")
             headers = {"Content-Type" : "application/json"}
             data = {"username": self.username, "password": self.password, "role" : "admin"}
             res = requests.post(BASEURL + "admin/login", headers=headers, data=json.dumps(data))
-            LOG.info('login(): SERVER SAYS:', res.text)
+            LOG.info('login(): SERVER SAYS:{}'.format(res.text))
+            print('login(): SERVER SAYS:{}'.format(res.text))
             LOG.info(res.status_code)
             pkg = res.json()
             self.user_token = pkg['token']
@@ -141,43 +142,59 @@ class Project:
         """
             Logout as admin user
         """
-        if self.admin_token is not None:
+        if self.user_token is not None:
             LOG.info("Admin logging out")
             headers = {"Content-Type" : "application/json"}
             data = {"token": self.admin_token}
             res = requests.post(BASEURL + "admin/logout", headers=headers, data=json.dumps(data))
-            LOG.info('logout(): SERVER SAYS:', res.text)
+            LOG.info('logout(): SERVER SAYS:{}'.format(res.text))
+            print('logout(): SERVER SAYS:{}'.format(res.text))
             self.admin_token = None
         else:
             LOG.info("User not logged in!")
 
+    def logout2(self):
+        """
+            Use logout2 to remove token
+        """
+        LOG.info("Admin logout2")
+        headers = {"Content-Type" : "application/json"}
+        data = {"username": self.username, "password": self.password, "role" : "admin"}
+        res = requests.post(BASEURL + "admin/logout2", headers=headers, data=json.dumps(data))
+        LOG.info('logout2(): SERVER SAYS: {}'.format(res.text))
+        print('logout2(): SERVER SAYS:', res.text)
+        LOG.info(res.status_code)
+        self.user_token = None
+
     def customlm(self):
         """
-            Upload audio to project
-            Requires tallship.ogg to be located in current location
+            Upload text to create a custom LM
+            Requires customlm.txt to be located in current location
         """
-        if not os.path.exists('tallship.ogg'):
-            LOG.error('Cannot run UPLOADAUDIO as "tallship.ogg" does not exist in current path')
+        if not os.path.exists(self.custom_text_file):
+            LOG.error('Cannot run CUSTOMLM as "{}" does not exist in current path'.format(self.custom_text_file))
             return
 
-        if self.user_token is not None and self.projectid is not None:
-            files = {'file' : open(self.test_audio, 'rb'), 'filename' : 'tallship.ogg', 'token' : self.user_token, 'projectid' : self.projectid}
-            res = requests.post(BASEURL + "projects/uploadaudio", files=files)
-            LOG.info('uploadaudio(): SERVER SAYS:', res.text)
+        if self.admin_token is not None:
+            files = {'file' : open(self.custom_text_file, 'rb'), 'filename' : self.custom_text_file, 'token' : self.admin_token, 'name' : gen_str(), "subsystem" : "en_ZA_16000"}
+            res = requests.post(BASEURL + "admin/customlm", files=files)
+            LOG.info('customlm(): SERVER SAYS:{}'.format(res.text))
+            print('customlm(): SERVER SAYS:{}'.format(res.text))
             LOG.info(res.status_code)
         else:
             LOG.info("User not logged in!")
 
     def customlmquery(self):
         """
-            Assign tasks to editors
+            Query Custom LM status
         """
-        if self.user_token is not None and self.projectid is not None:
-            LOG.info("Assigning tasks")
+        if self.admin_token is not None:
+            LOG.info("Custom LM Query")
             headers = {"Content-Type" : "application/json"}
-            data = {"token": self.user_token, "projectid" : self.projectid, "collator" : "e{}".format(random.choice(self.users.keys()))}
-            res = requests.post(BASEURL + "projects/assigntasks", headers=headers, data=json.dumps(data))
-            LOG.info('assigntasks(): SERVER SAYS:', res.text)
+            data = {"token": self.admin_token } 
+            res = requests.post(BASEURL + "admin/customlmquery", headers=headers, data=json.dumps(data))
+            LOG.info('customlmquery(): SERVER SAYS:{}'.format(res.text))
+            print('customlmquery(): SERVER SAYS:{}'.format(res.text))
             LOG.info(res.status_code)
         else:
             LOG.info("User not logged in!")
@@ -186,7 +203,7 @@ class Project:
 if __name__ == "__main__":
     print('Accessing Docker app server via: {}'.format(BASEURL))
 
-    proj = Admin()
+    admin = Admin()
 
     if len(sys.argv) < 2:
         print("HELP")
@@ -196,36 +213,23 @@ if __name__ == "__main__":
         print("CUSTOMLMQUERY - query custom lm")
 
     elif len(sys.argv) == 2:
-        if sys.argv[1].upper() == "ADDUSERS":
-            users = proj.gen_users()
-            proj.adminlin()
-            for usr in users:
-                usr = proj.adduser(usr)
-            proj.adminlout()
-
-        elif sys.argv[1].upper() == "ADDPROJECT":
-            users = proj.gen_users()
-            usr = random.choice(users.keys())
-            proj.login(usr)
-            proj.createproject()
-            proj.uploadaudio()
-            proj.createtasks()
-            proj.assigntasks()
-            proj.logout()
+        if sys.argv[1].upper() == "ADDUSER":
+            admin.adminlin()
+            admin.adduser()
+            admin.adminlout()
 
         elif sys.argv[1].upper() == "CUSTOMLM":
-            users = proj.gen_users()
-            usr = random.choice(users.keys())
-            proj.login(usr)
-            proj.customlm()
-            proj.logout()
+            admin.adminlin()
+            admin.customlm()
+            admin.adminlout()
 
         elif sys.argv[1].upper() == "CUSTOMLMQUERY":
-            users = proj.gen_users()
-            usr = random.choice(users.keys())
-            proj.login(usr)
-            proj.customlmquery()
-            proj.logout()
+            admin.adminlin()
+            admin.customlmquery()
+            admin.adminlout()
+
+        elif sys.argv[1].upper() == "LOGOUT2":
+            admin.adminlout2()
 
         else:
             print("UNKNOWN TASK: {}".format(sys.argv))

@@ -24,7 +24,9 @@
 	    "/admin/loadusers" : { "method" : "service.admin.Admin.get_users",
 					    "parameters" : ["token"] },
             "/admin/customlm" : { "method" : "service.admin.Admin.custom_lm",
-					    "parameters" : ["token", "filename", "file"] },
+					    "parameters" : ["token", "filename", "file", "name", "subsystem"] },
+	    "/admin/customlmquery" : { "method" : "service.admin.Admin.custom_lm_query",
+					    "parameters" : ["token"] },
  
 	    "/projects/login" : { "method" : "service.projects.Projects.login",
 				  "parameters" : ["username", "password", "role"] },
@@ -111,7 +113,7 @@
     	"PUT" : {}
     },
 
-    "TEMPIO_MODULES": {"projects" : "service.projects.Projects", "editor" : "service.editor.Editor"},
+    "TEMPIO_MODULES": {"projects" : "service.projects.Projects", "editor" : "service.editor.Editor", "admin" : "service.admin.Admin"},
    
     "logging" : {
     	"dir" : "/mnt/stp/",

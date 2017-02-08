@@ -5,7 +5,6 @@ from __future__ import unicode_literals, division, print_function #Py2
 import json
 import logging
 import os
-import tempfile
 import base64
 import uuid
 import requests
@@ -35,6 +34,7 @@ class Admin(auth.UserAuth):
         #DB connection setup:
         self.db = sqlite.connect(self._config['projectdb'], factory=ProjectDB)
         self.db.row_factory = sqlite.Row
+        self._custom_msg = {}
 
     """Implements all functions related to updating user information in
        the auth database.
@@ -126,7 +126,7 @@ class Admin(auth.UserAuth):
         # Bogus projectid
         projectid = "clm-{}".format(str(uuid.uuid4()))
         # Write text data to temporary file
-        textfile = os.path.join(tempfile.gettempdir(), auth.gen_token()) 
+        textfile = os.path.join(self._config["tmpdir"], auth.gen_token()) 
         with open(textfile, 'wb') as f:
             f.write(request['file'])
         # Add entries in db
@@ -138,7 +138,7 @@ class Admin(auth.UserAuth):
         # request speech job
         try:
             jobreq = {"token" : self._speech.token(), "gettext": os.path.join(APPSERVER, "admin", outurl),
-                    "putresult": os.path.join(APPSERVER, "admin", inurl), "service" : "customlm", "subsystem" : "default", "system_name" : request["name"]}
+                    "putresult": os.path.join(APPSERVER, "admin", inurl), "service" : "customlm", "subsystem" : request["subsystem"], "system_name" : request["name"]}
             LOG.debug(os.path.join(SPEECHSERVER, self._config["speechservices"]["customlm"]))
             reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]["customlm"]), data=json.dumps(jobreq))
             reqstatus = reqstatus.json()
@@ -175,7 +175,7 @@ class Admin(auth.UserAuth):
                 if not row:
                     raise MethodNotAllowedError(uri)
             LOG.info("OK: (url={} projectid={}) Returning text file".format(uri, row["projectid"]))
-            return {"mime": "text/plain", "filename": row["audiofile"]}
+            return {"mime": "text/plain", "filename": row["audiofile"], "savename" : "customlm.txt"}
         except Exception as e:
             LOG.info("FAIL: {}".format(e))
             raise
