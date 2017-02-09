@@ -477,9 +477,11 @@ class Projects(auth.UserAuth):
         try:
             # TEMPORARILY COMMENTED OUT FOR TESTING WITHOUT SPEECHSERVER:
             jobreq = {"token" : self._speech.token(), "getaudio": os.path.join(APPSERVER, "projects", outurl),
-                      "putresult": os.path.join(APPSERVER, "projects", inurl), "service" : "diarize", "subsystem" : "default"}
+                      "putresult": os.path.join(APPSERVER, "projects", inurl),
+                      "service" : self._config["speechservices"]["diarize"]["name"],
+                      "subsystem" : self._config["speechservices"]["diarize"]["subsystem"]}
             LOG.debug(os.path.join(SPEECHSERVER, self._config["speechservices"]["diarize"]))
-            reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]["diarize"]), data=json.dumps(jobreq))
+            reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]["diarize"]["url"]), data=json.dumps(jobreq))
             reqstatus = reqstatus.json()
             #reqstatus = {"jobid": auth.gen_token()} #DEMIT: dummy call for testing!
             LOG.debug("Diarize: reqstatus={}".format(reqstatus))

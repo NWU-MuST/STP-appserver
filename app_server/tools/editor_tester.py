@@ -674,7 +674,6 @@ class Editor:
             LOG.error("username={}: align(): User not logged in!".format(self.username))
         print('')
 
-
     def clearerror(self):
         """
             Clear error status
@@ -691,6 +690,24 @@ class Editor:
         else:
             print("User not logged in!")
             LOG.error("username={}: clearerror(): User not logged in!".format(self.username))
+        print('')
+
+    def speechsubsystems(self):
+        """
+            List speech subsystems
+        """
+        LOG.info("username={}: speechsubsystems(): Entering".format(self.username))
+        if self.user_token is not None:
+            headers = {"Content-Type" : "application/json"}
+            services = ["diarize", "recognize", "align"]
+            data = {'token' : self.user_token, "service" : random.choice(services)}
+            res = requests.post(BASEURL + "editor/speechsubsystems", headers=headers, data=json.dumps(data))
+            print('SERVER SAYS:', res.text)
+            LOG.info("username={}: speechsubsystems(): {}".format(self.username, res.text))
+            print(res.status_code)
+        else:
+            print("User not logged in!")
+            LOG.error("username={}: speechsubsystems(): User not logged in!".format(self.username))
         print('')
 
 
@@ -894,6 +911,11 @@ if __name__ == "__main__":
             edit.login(sys.argv[2])
             edit.loadtasks()
             edit.buildmaster()
+            edit.logout()
+
+        elif sys.argv[1].upper() == "SPEECHSUBSYSTEMS":
+            edit.login(sys.argv[2])
+            edit.speechsubsystems()
             edit.logout()
 
         elif sys.argv[1].upper() == "DIARIZE":

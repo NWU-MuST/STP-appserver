@@ -25,6 +25,7 @@ class Speech:
         self._loginurl = self._config["speechserver"]["login"]
         self._logouturl = self._config["speechserver"]["logout"]
         self._logout2url = self._config["speechserver"]["logout2"]
+        self._discoverurl = self._config["speechserver"]["discover"]
         self._token = None
 
     def login(self):
@@ -60,7 +61,20 @@ class Speech:
             jobreq = {"token" : self._token}
             reqstatus = requests.post(os.path.join(SPEECHSERVER, self._logouturl), data=json.dumps(jobreq))
             reqstatus = reqstatus.json()
-        raise BadRequestError("Not logged into speech server")
+        else:
+            raise BadRequestError("Not logged into speech server")
+
+    def discover(self):
+        """
+            Discover speech server services
+        """
+        if self._token is not None:
+            jobreq = {"token" : self._token}
+            reqstatus = requests.get(os.path.join(SPEECHSERVER, self._discoverurl), params=jobreq)
+            reqstatus = reqstatus.json()
+            return reqstatus
+        else:
+            raise BadRequestError("Not logged into speech server")
 
     def token(self):
         if self._token is None:

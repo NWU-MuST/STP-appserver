@@ -90,6 +90,8 @@
 				   "parameters" : ["token", "taskid", "projectid"] },
 	    "/editor/align" : { "method" : "service.editor.Editor.align",
 				   "parameters" : ["token", "taskid", "projectid"] },
+	    "/editor/speechsubsystems" : { "method" : "service.editor.Editor.speech_subsystems",
+				   "parameters" : ["token", "service"] },
 	    "/editor/taskdone" : { "method" : "service.editor.Editor.task_done",
 				   "parameters" : ["token", "taskid", "projectid"] },
 	    "/editor/unlocktask" : { "method" : "service.editor.Editor.unlock_task",
@@ -102,7 +104,6 @@
 					  "parameters" : ["token", "taskid", "projectid" ] },
 	    "/editor/buildmaster" : { "method" : "service.editor.Editor.buildmaster",
 					  "parameters" : ["token", "projectid" ] }
-
 	},
 
     	"GET" : {
@@ -127,6 +128,7 @@
         "password" : "123456",
         "login" : "jobs/login",
         "logout" : "jobs/logout",
-        "logout2": "jobs/logout2"
+        "logout2": "jobs/logout2",
+        "discover" : "jobs/discover"
     }   
 }

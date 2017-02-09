@@ -230,6 +230,29 @@ class Editor(auth.UserAuth):
                 db.set_jobid(request["projectid"], request["taskid"], year, None)
             raise
 
+    @authlog("Return subsystems for speech service")
+    def speech_subsystems(self, request):
+        """ Return service subsystems
+        """
+        service = request["service"]
+        if service not in self._config["speechservices"]["services"]:
+            raise NotFoundError("Speech service not supported!")
+
+        options = self._speech.discover()
+        LOG.info("{}".format(options))
+        if service not in options["subsystems"]:
+            raise NotFoundError("Speech server can't find requested service!")
+
+        subs = options["subsystems"][self._config["speechservices"]["services"][service]]
+        systems = []
+        for item in subs:
+            systems.append(item["subsystem"])
+
+        if len(systems) == 0:
+            raise NotFoundError("Speech service has no subsystems defined!")
+
+        return {"systems" : systems}
+
     @authlog("Perform diarize")
     def diarize(self, request):
         """
@@ -259,8 +282,17 @@ class Editor(auth.UserAuth):
 
             self._test_read(task["textfile"])
 
-            request["service"] = "diarize"
-            return self._speech_job(request, project, task, "diarize", "default", {})
+            request["service"] = self._config["speechservices"]["services"]["diarize"]
+            if "subsystem" not in request:
+                if "language" in request:
+                    if request["language"] in self._config["speechservices"]["language"]:
+                        request["subsystem"] = self._config["speechservices"]["language"][request["language"]]
+                    else:
+                        raise NotFoundError("Language not supported by speech server!")
+                else:
+                    raise NotFoundError("No language has been specified!")
+
+            return self._speech_job(request, project, task)
         except Exception as e:
             LOG.error("Diarize audio failed: {}".format(e))
             with self.db as db:
@@ -292,17 +324,19 @@ class Editor(auth.UserAuth):
             if task["textfile"] is None or len(task["textfile"]) == 0:
                 raise NotFoundError("This task has no text file")
 
-            #if os.path.getsize(task["textfile"]) == 0:
-            #    raise BadRequestError("Cannot run recognize since the document is empty!")
-
             self._test_read(task["textfile"])
 
-            #params = self._recognize_segments(task["textfile"])
-            params = {}
-            params["language"] = "English"
-            request["service"] = "recognize"
+            request["service"] = self._config["speechservices"]["services"]["recognize"]
+            if "subsystem" not in request:
+                if "language" in request:
+                    if request["language"] in self._config["speechservices"]["language"]:
+                        request["subsystem"] = self._config["speechservices"]["language"][request["language"]]
+                    else:
+                        raise NotFoundError("Language not supported by speech server!")
+                else:
+                    raise NotFoundError("No language has been specified!")
 
-            return self._speech_job(request, project, task, "recognize", "en_ZA_16000", params)
+            return self._speech_job(request, project, task)
         except Exception as e:
             LOG.error("Recognize audio failed: {}".format(e))
             with self.db as db:
@@ -310,14 +344,6 @@ class Editor(auth.UserAuth):
                 db.set_errstatus(request["projectid"], request["taskid"], year, "{}".format(e))
                 db.set_jobid(request["projectid"], request["taskid"], year, None)
             raise
-
-    def _recognize_segments(self, textfile):
-        """
-            Identify empty portions
-            TODO: must fix format
-        """
-        #TODO: should force ckeditor to use existing tools
-        return {"segments" : [(10.0, 20.0, "SPK1"), (20.0, 30.0, "SPK2")]}
 
     @authlog("Perform alignment")
     def align(self, request):
@@ -347,10 +373,17 @@ class Editor(auth.UserAuth):
 
             self._test_read(task["textfile"])
 
-            params = self._align_segments(task["textfile"])
-            params["language"] = "English"
-            request["service"] = "align"
-            return self._speech_job(request, project, task, "align", "en_ZA_16000", params)
+            request["service"] = self._config["speechservices"]["services"]["align"]
+            if "subsystem" not in request:
+                if "language" in request:
+                    if request["language"] in self._config["speechservices"]["language"]:
+                        request["subsystem"] = self._config["speechservices"]["language"][request["language"]]
+                    else:
+                        raise NotFoundError("Language not supported by speech server!")
+                else:
+                    raise NotFoundError("No language has been specified!")
+
+            return self._speech_job(request, project, task)
         except Exception as e:
             LOG.error("Align audio failed: {}".format(e))
             with self.db as db:
@@ -359,27 +392,7 @@ class Editor(auth.UserAuth):
                 db.set_jobid(request["projectid"], request["taskid"], year, None)
             raise
 
-    def _align_segments(self, textfile):
-        """
-            Pass back segments that contain text
-            TODO: should fix format
-        """
-        #TODO: should force ckeditor to use existing tools
-
-        #TODO: Enable text compression
-        # import cStringIO
-        # import gzip
-        # out = cStringIO.StringIO()
-        # with gzip.GzipFile(fileobj=out, mode="w") as f:
-        #     f.write("This is mike number one, isn't this a lot of fun?")
-        # out.getvalue()
-        #OR
-        # compressed_value = s.encode("zlib")
-        # plain_string_again = compressed_value.decode("zlib")
-        return {"segments" : [(10.0, 20.0, "SPK1"), (20.0, 30.0, "SPK2")],
-                "text" : ["Some text for this portion", "Text for the next portion"]}
-
-    def _speech_job(self, request, project, task, service, subsystem, parameters):
+    def _speech_job(self, request, project, task):
         """
             Submit a speech job
         """
@@ -387,24 +400,26 @@ class Editor(auth.UserAuth):
             db.lock()
             #Setup I/O access
             inurl = auth.gen_token()
-            outurl = auth.gen_token()
+            audio_outurl = auth.gen_token()
+            text_outurl = auth.gen_token()
 
             db.set_jobid(request["projectid"], request["taskid"], project["year"], "pending")            
             db.insert_incoming(request["projectid"], request["taskid"], inurl, request["service"])
-            db.insert_outgoing(request["projectid"], outurl, project["audiofile"], task["start"], task["end"])
+            db.insert_outgoing(request["projectid"], audio_outurl, project["audiofile"], task["start"], task["end"])
+            db.insert_outgoing(request["projectid"], text_outurl, task["textfile"], -2.0, -2.0)
 
         #Make job request
         #TEMPORARILY COMMENTED OUT FOR TESTING WITHOUT SPEECHSERVER:
         #TODO: fix editor reference
-        jobreq = {"token" : self._speech.token(), "getaudio": os.path.join(APPSERVER, "editor", outurl),
-                   "putresult": os.path.join(APPSERVER, "editor", inurl)}
-        jobreq["service"] = service
-        jobreq["subsystem"] = subsystem
-        jobreq.update(parameters)
+        jobreq = { "token" : self._speech.token(), "getaudio": os.path.join(APPSERVER, "editor", audio_outurl),
+                   "gettext": os.path.join(APPSERVER, "editor", text_outurl),
+                   "putresult": os.path.join(APPSERVER, "editor", inurl) }
+        jobreq["service"] = request["service"]
+        jobreq["subsystem"] = request["subsystem"]
 
-        LOG.debug(os.path.join(SPEECHSERVER, self._config["speechservices"]["add"]))
+        LOG.debug(os.path.join(SPEECHSERVER, self._config["speechservices"]["API"]["add"]))
         LOG.debug("{}".format(jobreq))
-        reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]["add"]), data=json.dumps(jobreq))
+        reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]["API"]["add"]), data=json.dumps(jobreq))
         reqstatus = reqstatus.json()
         #reqstatus = {"jobid": auth.gen_token()} #DEMIT: dummy call for testing!
 
@@ -424,14 +439,15 @@ class Editor(auth.UserAuth):
             if "message" in reqstatus:
                 db.set_errstatus(request["projectid"], request["taskid"], project["year"], reqstatus["message"])
             db.delete_incoming_byurl(inurl)
-            db.delete_outgoing_byurl(outurl)
+            db.delete_outgoing_byurl(audio_outurl)
+            db.delete_outgoing_byurl(text_outurl)
             db.set_jobid(request["projectid"], request["taskid"], project["year"], None)
 
         LOG.error("Speech service request failed for project ID: {}, task ID: {}".format(request["projectid"], request["taskid"]))
         return reqstatus #DEMIT TODO: translate error from speech server!
 
     def outgoing(self, uri):
-        """
+        """ Return task data for retrieval
         """
         try:
             LOG.debug(uri)
@@ -446,18 +462,20 @@ class Editor(auth.UserAuth):
 
                 # Check if audio range is available
                 if row["start"] is not None and row["end"] is not None:
-                    if float(row["start"]) == -1.0 and float(row["end"]) == -1.0:
+                    if float(row["start"]) == -2.0 and float(row["end"]) == -2.0: # Task text
+                        return {"mime": "text/html", "filename": row["audiofile"], "savename" : "{}.html".format(projectname)}
+                    elif float(row["start"]) == -1.0 and float(row["end"]) == -1.0: # Masterfile MS-WORD document
                         return {"mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                                 "filename": row["audiofile"], "savename" : "{}.docx".format(projectname)}
-                    else:
+                    else:# Normal audio
                         return {"mime": "audio/ogg", "filename": row["audiofile"], "range" : (float(row["start"]), float(row["end"]))}
-                else:
+                else: # Full audio return
                     return {"mime": "audio/ogg", "filename": row["audiofile"]}
         except Exception as e:
             LOG.error("Requested outgoing resource failed: {}".format(e))
 
     def incoming(self, uri, data):
-        """
+        """ Processing incoming data and save to task
         """
         try:
             LOG.debug("incoming_data: {}".format(data))
@@ -495,7 +513,7 @@ class Editor(auth.UserAuth):
                     raise ConflictError("No job expected (Project ID: {}, Task ID: {})".format(projectid, taskid))
 
                 textfile = db.get_task_field(projectid, taskid, year, fields=["textfile"])["textfile"]
-                if textfile is None or len(textfile) == 0:
+                if textfile is None:
                     raise NotFoundError("This task has no text file")
             self._test_read(textfile)
 
@@ -503,18 +521,10 @@ class Editor(auth.UserAuth):
                 if len(data["errstatus"]) != 0:
                     self._append_to_textfile(projectid, taskid, textfile, "ERROR: Speech job fail! {}".format(data["errstatus"]))
                     raise Exception("Speech job failed: (Project ID: {}, Task ID: {})".format(projectid, taskid))
+
             if "CTM" not in data:
                 self._append_to_textfile(projectid, taskid, textfile, "ERROR: Speech job fail! NO CTM from output!!")
                 raise Exception("No CTM found in data: (Project ID: {}, Task ID: {})".format(projectid, taskid))
-
-            if service_name == "diarize":
-                ctm = self._ctm_editor_diarize(data["CTM"], textfile)
-            elif service_name == "recognize":
-                ctm = self._ctm_editor_recognize(data["CTM"], textfile)
-            elif service_name == "align":
-                ctm = self._ctm_editor_align(data["CTM"], textfile)
-            else:
-                raise Exception("Unknown service name: {}".format(service_name))
 
             with self.db as db:
                 repo.check(os.path.dirname(textfile))
@@ -557,61 +567,6 @@ class Editor(auth.UserAuth):
                 LOG.info("Appending error message to textfile, project ID: {}, Task ID: {}".format(projectid, taskid))
         except Exception as e:
             raise
-
-    def _ctm_editor_diarize(self, ctm, textfile):
-        """
-            Convert the speech server output CTM format to editor format
-        """
-        try:
-            LOG.info("CTM parsing diarization mode")
-            template = '<p><time datetime="$raw_time" style="background-color: #AAAAAA;" type="mark">$display_time</time></p>'
-            out = []
-            for line in ctm.splitlines():
-                (tag, channel, start, end, text) = line.split()
-                raw_time = float(start)
-                display_time = time.strftime('%H:%M:%S', time.gmtime(raw_time))
-                out.append(string.Template(template).substitute({"raw_time" : raw_time, "display_time" : display_time}))
-                out.append("")
-                out.append(text.replace("<","{").replace(">","}"))
-                out.append("")
-            return "\n".join(out)
-        except Exception as e:
-            raise e
-
-    def _ctm_editor_recognize(self, ctm, textfile):
-        """
-            Convert the speech server output CTM format to editor format
-        """
-        try:
-            LOG.info("CTM parsing recognize mode")
-            template = '<time datetime="$raw_time">$word</time>'
-            template_conf = '<time datetime="$raw_time"><conf style="background-color: $color">$word</conf></time>'
-            out = ["<p>"]
-            for line in ctm.splitlines():
-                (tag, channel, start, end, word, conf) = line.split()
-                (spk, seg_start, seg_end) = tag.split("_")
-                raw_time = float(start) + (float(int(seg_start)) / 100.0)
-                conf = float(conf)
-                if conf == 1.0:
-                    out.append(string.Template(template).substitute({"raw_time" : raw_time, "word" : word.replace("<","{").replace(">","}")}))
-                elif conf > 0.7:
-                    out.append(string.Template(template_conf).substitute({"raw_time" : raw_time, "color" : "#FFA500", "word" : word.replace("<","{").replace(">","}")}))
-                else:
-                    out.append(string.Template(template_conf).substitute({"raw_time" : raw_time, "color" : "#FF0000", "word" : word.replace("<","{").replace(">","}")}))
-            out.append("</p>")
-            out.append("\n")
-            return " ".join(out)
-        except Exception as e:
-            raise e
-
-    def _ctm_editor_align(self, ctm, textfile):
-        """
-            Convert the speech server output CTM format to editor format
-        """
-        #segments = [map(float, line.split()) for line in ctm.splitlines()]
-        #segments.sort(key=lambda x:x[0]) #by starttime
-        LOG.info("CTM parsing successful..")
-        return ctm
 
     @authlog("Mark task done")
     def task_done(self, request):
@@ -660,7 +615,7 @@ class Editor(auth.UserAuth):
                     raise NotFoundError("No Job has been specified")
 
                 jobreq = {"token" : self._speech.token(), "jobid" : task["jobid"]}
-                LOG.debug(os.path.join(SPEECHSERVER, self._config["speechservices"]["delete"]))
+                LOG.debug(os.path.join(SPEECHSERVER, self._config["speechservices"]["API"]["delete"]))
                 LOG.debug("{}".format(jobreq))
                 reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]["delete"]), data=json.dumps(jobreq))
                 reqstatus = reqstatus.json()
