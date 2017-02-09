@@ -71,6 +71,7 @@ class Admin:
         self.username = "john"
         self.password = "doe"
         self.custom_text_file = "customlm.txt"
+        self.projectid = None
 
     def adminlin(self):
         """
@@ -181,20 +182,40 @@ class Admin:
             LOG.info('customlm(): SERVER SAYS:{}'.format(res.text))
             print('customlm(): SERVER SAYS:{}'.format(res.text))
             LOG.info(res.status_code)
+            pkg = res.json()
+            self.projectid = pkg['projectid']
+            LOG.info('customlm(): SERVER SAYS:{}'.format(self.projectid))
+            print('customlm(): SERVER SAYS:{}'.format(self.projectid))
         else:
             LOG.info("User not logged in!")
 
-    def customlmquery(self):
+    def customlmquery(self, projectid):
         """
             Query Custom LM status
         """
         if self.admin_token is not None:
             LOG.info("Custom LM Query")
             headers = {"Content-Type" : "application/json"}
-            data = {"token": self.admin_token } 
+            data = {"token": self.admin_token, "projectid" : projectid} 
             res = requests.post(BASEURL + "admin/customlmquery", headers=headers, data=json.dumps(data))
             LOG.info('customlmquery(): SERVER SAYS:{}'.format(res.text))
             print('customlmquery(): SERVER SAYS:{}'.format(res.text))
+            LOG.info(res.status_code)
+            self.projectid = None
+        else:
+            LOG.info("User not logged in!")
+
+    def clearmessage(self):
+        """
+            Clear message records
+        """
+        if self.admin_token is not None:
+            LOG.info("Clearing message records")
+            headers = {"Content-Type" : "application/json"}
+            data = {"token": self.admin_token } 
+            res = requests.post(BASEURL + "admin/clearmessage", headers=headers, data=json.dumps(data))
+            LOG.info('clearmessage(): SERVER SAYS:{}'.format(res.text))
+            print('clearmessage(): SERVER SAYS:{}'.format(res.text))
             LOG.info(res.status_code)
         else:
             LOG.info("User not logged in!")
@@ -211,8 +232,9 @@ if __name__ == "__main__":
         print("ADDUSER - Add project users")
         print("CUSTOMLM - custom lm")
         print("CUSTOMLMQUERY - query custom lm")
+        print("CLEARMESSAGE - clear message records")
 
-    elif len(sys.argv) == 2:
+    elif len(sys.argv) > 1:
         if sys.argv[1].upper() == "ADDUSER":
             admin.adminlin()
             admin.adduser()
@@ -225,11 +247,16 @@ if __name__ == "__main__":
 
         elif sys.argv[1].upper() == "CUSTOMLMQUERY":
             admin.adminlin()
-            admin.customlmquery()
+            admin.customlmquery(sys.argv[2])
             admin.adminlout()
 
         elif sys.argv[1].upper() == "LOGOUT2":
             admin.adminlout2()
+
+        elif sys.argv[1].upper() == "CLEARMESSAGE":
+            admin.adminlin()
+            admin.clearmessage()
+            admin.adminlout()
 
         else:
             print("UNKNOWN TASK: {}".format(sys.argv))

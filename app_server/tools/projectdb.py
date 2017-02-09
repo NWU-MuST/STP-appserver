@@ -45,5 +45,7 @@ if __name__ == "__main__":
                                                                    "audiofile VARCHAR(128)",
                                                                    "start REAL",
                                                                    "end REAL"])))
+    db_curs.execute("CREATE TABLE message ({})".format(", ".join(["key VARCHAR(36)",
+                                                                  "message VARCHAR(128)"]))
     db_conn.commit()
 

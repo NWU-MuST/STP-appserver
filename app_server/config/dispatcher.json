@@ -26,6 +26,8 @@
             "/admin/customlm" : { "method" : "service.admin.Admin.custom_lm",
 					    "parameters" : ["token", "filename", "file", "name", "subsystem"] },
 	    "/admin/customlmquery" : { "method" : "service.admin.Admin.custom_lm_query",
+					    "parameters" : ["token", "projectid"] },
+	    "/admin/clearmessage" : { "method" : "service.admin.Admin.clear_message",
 					    "parameters" : ["token"] },
  
 	    "/projects/login" : { "method" : "service.projects.Projects.login",

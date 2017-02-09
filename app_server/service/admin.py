@@ -161,9 +161,20 @@ class Admin(auth.UserAuth):
         """ Return custom lm data and clear it
         """
         self.authdb.authenticate(request["token"], self._config["role"])
-        tmp = copy.deepcopy(self._custom_msg)
-        self._custom_msg = {}
-        return tmp
+        LOG.info(request["projectid"])
+        with self.db as db:
+            row = db.get_message(request["projectid"])
+        if bool(row) == False:
+            row = "No record found for key!"
+        return row
+
+    def clear_message(self, request):
+        """ Clear the entire message table
+        """
+        self.authdb.authenticate(request["token"], self._config["role"])
+        with self.db as db:
+            row = db.clear_message()
+        return "Message records cleared!"
 
     def outgoing(self, uri):
         """ Return the text document
@@ -193,7 +204,10 @@ class Admin(auth.UserAuth):
             #Switch to handler for "servicetype"
             if not row["servicetype"] in self._config["speechservices"]:
                 raise Exception("Service type '{}' not defined in AppServer".format(row["servicetype"]))
-            self._custom_msg[row["projectid"]] = data
+            LOG.info(row["projectid"])
+            with self.db as db:
+                db.set_message(row["projectid"], str(data["message"]))
+
             LOG.info("OK: (url={} projectid={}) Incoming data processed".format(uri, row["projectid"]))
             return "Request successful!"
         except Exception as e:
@@ -241,6 +255,23 @@ class ProjectDB(sqlite.Connection):
         else:
             row = {}
         return row
+
+    def set_message(self, key, message):
+        self.execute("INSERT INTO message (key, message) VALUES(?,?)", (key, message))
+
+    def get_message(self, key):
+        row = self.execute("SELECT message FROM message WHERE key=?", (key,)).fetchone()
+        if row is not None:
+            self.execute("DELETE FROM message WHERE key=?", (key,))
+            row = dict(row)
+        else:
+            row = {}
+        return row
+
+    def clear_message(self):
+        self.lock()
+        self.execute("DELETE FROM message")
+        self.execute("VACUUM")
 
 if __name__ == "__main__":
     pass
