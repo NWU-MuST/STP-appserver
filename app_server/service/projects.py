@@ -203,12 +203,13 @@ class Projects(auth.UserAuth):
                                  fields=["taskid", "editor", "start", "end", "language", "speaker", "editing"])
         return {'project' : project, 'tasks' : tasks}
 
-    @authlog("Create tasks")
-    def create_tasks(self, request):
+    @authlog("Save project fields and tasks if in request")
+    def save_project(self, request):
         """Save the project state (assignments and task partitioning) and create tasks in the
            interim. This can only be run BEFORE `assign_tasks` and
            usually after partitioning (e.g. via speech diarize or the
            UI or both). To update project meta-info or assignees for existing tasks use `update_project`
+           Tasks can be supplied and will be updated, if empty it will be ingnore
         """
         #Check whether all necessary fields are in input for each task
         infields = ("editor", "speaker", "start", "end", "language")

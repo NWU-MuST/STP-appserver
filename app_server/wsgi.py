@@ -165,7 +165,8 @@ def application(env, start_response):
             else: # Send back MS-WORD document
                 with open(d['filename'], 'rb') as infh:
                     data = infh.read()
-                os.remove(d["filename"])
+                if d["delete"] == "Y":
+                    os.remove(d["filename"])
                 response_header = [("Content-Disposition", 'attachment; filename="{}"'.format(d["savename"]))]
 
             response_header.extend([('Content-Type', str(d["mime"])), ('Content-Length', str(len(data)))])

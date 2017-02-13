@@ -19,7 +19,7 @@ import time
 
 # Some constants
 BASEURL = "http://127.0.0.1:9999/wsgi/"
-USERNO = 2
+USERNO = 1
 RANDOM_WAIT_LOW = 0.2
 RANDOM_WAIT_HIGH = 0.3
 
@@ -181,7 +181,7 @@ class Project:
         if self.user_token is not None:
             LOG.info("Creating project")
             headers = {"Content-Type" : "application/json"}
-            data = {"token": self.user_token, "projectname" : gen_str(10), "category" : "NCOP", "projectmanager" : random.choice(self.users.keys()) }
+            data = {"token": self.user_token, "projectname" : gen_str(10), "category" : "General", "projectmanager" : random.choice(self.users.keys()) }
             res = requests.post(BASEURL + "projects/createproject", headers=headers, data=json.dumps(data))
             LOG.info('createproject(): SERVER SAYS:{}'.format(res.text))
             LOG.info(res.status_code)
@@ -218,12 +218,14 @@ class Project:
             headers = {"Content-Type" : "application/json"}
 
             task_no = int(math.floor(random.uniform(2,5)))
+            task_no = 1
             segs = [0.0]
-            for n in range(task_no):
-                segs.append(random.uniform(1,8))
-            segs.sort()
-            segs = [self.test_audio_duration*x/segs[-1] for x in segs]
+            #for n in range(task_no):
+            #    segs.append(random.uniform(1,8))
+            #segs.sort()
+            #segs = [self.test_audio_duration*x/segs[-1] for x in segs]
             tasks = []
+            segs.append(self.test_audio_duration)
             for n in range(task_no):
                 tmp = {"editor" : "e{}".format(random.choice(self.users.keys())), "start" : segs[n], "end" : segs[n+1], "language" : gen_str(10), "speaker" : gen_str(10)}
                 tasks.append(tmp)
@@ -359,6 +361,24 @@ class Editor:
             LOG.error("username={}: logout(): User not logged in!".format(self.username))
         print('')
 
+    def logout2(self, user):
+        """
+            Logout with user's details
+        """
+        if user not in self.users:
+            LOG.error("{} not in user list".format(user))
+            return
+
+        LOG.info("username={}: {} logging in".format(self.users[user]["username"], user))
+        headers = {"Content-Type" : "application/json"}
+        data = {"username": self.users[user]["username"], "password": self.users[user]["password"], "role" : self.users[user]["role"]}
+        res = requests.post(BASEURL + "editor/logout2", headers=headers, data=json.dumps(data))
+        print('logout2(): SERVER SAYS:', res.text)
+        print(res.status_code)
+        LOG.info('username={}: logout2(): SERVER SAYS: {}'.format(self.users[user]["username"], res.text))
+        self.user_token = None
+        print('')
+
     def adduser(self, user):
         """
             Add automatically generated users to database
@@ -381,7 +401,7 @@ class Editor:
             LOG.error("adduser(): Admin not logged in!")
         print('')
 
-    def loadtasks(self):
+    def loadtasks(self, clearerror=False):
         """
             Load all tasks belonging to neil
         """
@@ -397,9 +417,14 @@ class Editor:
                 self.all_tasks = pkg["editor"]
                 self.this_task = None
                 for this_task in pkg['editor']:
-                    if this_task["jobid"] is None and this_task["errstatus"] is None:
-                        self.this_task = this_task
-                        break
+                    if not clearerror:
+                        if this_task["jobid"] is None and this_task["errstatus"] is None:
+                            self.this_task = this_task
+                            break
+                    else:
+                        if this_task["jobid"] is None:
+                            self.this_task = this_task
+
                 if self.this_task is None:
                     raise RuntimeError("Cannot select a task!")
 
@@ -630,7 +655,7 @@ class Editor:
         LOG.info("username={}: diarize(): Entering".format(self.username))
         if self.user_token is not None and self.projectid is not None:
             headers = {"Content-Type" : "application/json"}
-            data = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid}
+            data = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid, 'subsystem' : 'default'}
             res = requests.post(BASEURL + "editor/diarize", headers=headers, data=json.dumps(data))
             print('SERVER SAYS:', res.text)
             LOG.info("username={}: diarize(): {}".format(self.username, res.text))
@@ -647,7 +672,7 @@ class Editor:
         LOG.info("username={}: recognize(): Entering".format(self.username))
         if self.user_token is not None and self.projectid is not None:
             headers = {"Content-Type" : "application/json"}
-            data = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid}
+            data = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid, 'subsystem' : 'en_ZA_16000'}
             res = requests.post(BASEURL + "editor/recognize", headers=headers, data=json.dumps(data))
             print('SERVER SAYS:', res.text)
             LOG.info("username={}: recognize(): {}".format(self.username, res.text))
@@ -785,7 +810,8 @@ if __name__ == "__main__":
         print("DIARIZE - submit diarize job")
         print("RECOGNIZE - submit recognize job")
         print("ALIGN - submit align job")
-        print("SAVEALLTEXT - save text to all tasks\n")
+        print("SAVEALLTEXT - save text to all tasks")
+        print("LOGOUT2 - force user logout\n")
 
         print("Collator specific - (need to provide a user name)")
         print("REASSIGNTASKS - push task ownership back to editor")
@@ -866,6 +892,12 @@ if __name__ == "__main__":
             edit.savetext()
             edit.logout()
 
+        elif sys.argv[1].upper() == "CLEARTEXT":
+            edit.login(sys.argv[2])
+            edit.loadtasks()
+            edit.cleartext()
+            edit.logout()
+
         elif sys.argv[1].upper() == "SAVEALLTEXT":
             edit.login(sys.argv[2])
             edit.loadtasks()
@@ -874,6 +906,7 @@ if __name__ == "__main__":
 
         elif sys.argv[1].upper() == "CLEARERROR":
             edit.login(sys.argv[2])
+            edit.loadtasks(clearerror=True)
             edit.clearerror()
             edit.logout()
 
@@ -935,6 +968,9 @@ if __name__ == "__main__":
             edit.loadtasks()
             edit.align()
             edit.logout()
+
+        elif sys.argv[1].upper() == "LOGOUT2":
+            edit.logout2(sys.argv[2])
 
     else:
             print("UNKNOWN TASK: {}".format(sys.argv))

@@ -284,13 +284,7 @@ class Editor(auth.UserAuth):
 
             request["service"] = self._config["speechservices"]["services"]["diarize"]
             if "subsystem" not in request:
-                if "language" in request:
-                    if request["language"] in self._config["speechservices"]["language"]:
-                        request["subsystem"] = self._config["speechservices"]["language"][request["language"]]
-                    else:
-                        raise NotFoundError("Language not supported by speech server!")
-                else:
-                    raise NotFoundError("No language has been specified!")
+                raise NotFoundError("No diarizer subsystem specified!")
 
             return self._speech_job(request, project, task)
         except Exception as e:
@@ -463,10 +457,10 @@ class Editor(auth.UserAuth):
                 # Check if audio range is available
                 if row["start"] is not None and row["end"] is not None:
                     if float(row["start"]) == -2.0 and float(row["end"]) == -2.0: # Task text
-                        return {"mime": "text/html", "filename": row["audiofile"], "savename" : "{}.html".format(projectname)}
+                        return {"mime": "text/html", "filename": row["audiofile"], "savename" : "{}.html".format(projectname), "delete" : "N"}
                     elif float(row["start"]) == -1.0 and float(row["end"]) == -1.0: # Masterfile MS-WORD document
                         return {"mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                "filename": row["audiofile"], "savename" : "{}.docx".format(projectname)}
+                                "filename": row["audiofile"], "savename" : "{}.docx".format(projectname), "delete" : "Y"}
                     else:# Normal audio
                         return {"mime": "audio/ogg", "filename": row["audiofile"], "range" : (float(row["start"]), float(row["end"]))}
                 else: # Full audio return
@@ -486,8 +480,8 @@ class Editor(auth.UserAuth):
                 if not row:
                     raise MethodNotAllowedError(uri)
 
-                if not row["servicetype"] in self._config["speechservices"]["services"]:
-                    raise Exception("Service type '{}' not defined in AppServer".format(row["servicetype"]))
+                #if not row["servicetype"] in self._config["speechservices"]["services"]:
+                #    raise Exception("Service type '{}' not defined in AppServer".format(row["servicetype"]))
 
                 self._incoming_base(data, row["projectid"], row["taskid"], row["servicetype"])
 
@@ -515,6 +509,7 @@ class Editor(auth.UserAuth):
                 textfile = db.get_task_field(projectid, taskid, year, fields=["textfile"])["textfile"]
                 if textfile is None:
                     raise NotFoundError("This task has no text file")
+
             self._test_read(textfile)
 
             if "errstatus" in data:
@@ -529,7 +524,7 @@ class Editor(auth.UserAuth):
             with self.db as db:
                 repo.check(os.path.dirname(textfile))
                 with codecs.open(textfile, "w", "utf-8") as f:
-                    f.write(ctm)
+                    f.write(data["CTM"])
                 commitid, modified = repo.commit(os.path.dirname(textfile), os.path.basename(textfile), "Changes saved")
                 db.save_text(projectid, taskid, year, commitid, modified)
                 db.set_jobid(projectid, taskid, year, None)
