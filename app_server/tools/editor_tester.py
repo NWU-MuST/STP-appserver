@@ -85,7 +85,7 @@ class Project:
             self.users[usr]["password"] = usr
             self.users[usr]["name"] = gen_str()
             self.users[usr]["surname"] = gen_str(10)
-            self.users[usr]["email"] = "{}@{}.org".format(gen_str(), gen_str())
+            self.users[usr]["email"] = "{}@{}.org".format(usr, usr)
             self.users[usr]["role"] = "project"
         return self.users
 
@@ -97,7 +97,7 @@ class Project:
         if self.admin_token is None:
             LOG.info("Admin logging in")
             headers = {"Content-Type" : "application/json"}
-            data = {"username": "root", "password": "123456", "role" : "admin"}
+            data = {"username": "root", "password": "123456", "role" : "project"}
             res = requests.post(BASEURL + "admin/login", headers=headers, data=json.dumps(data))
             LOG.info('adminlin(): SERVER SAYS:{}'.format(res.text))
             LOG.info(res.status_code)
@@ -207,7 +207,7 @@ class Project:
         else:
             LOG.info("User not logged in!")
 
-    def createtasks(self):
+    def saveproject(self):
         """
             Save tasks for a specific project
             tasks should be a list of dicts with these elements:
@@ -232,8 +232,8 @@ class Project:
 
             project = {"projectname": gen_str(10)}
             data = {"token": self.user_token, "projectid" : self.projectid, "tasks": tasks, "project": project}
-            res = requests.post(BASEURL + "projects/createtasks", headers=headers, data=json.dumps(data))
-            LOG.info('createtasks(): SERVER SAYS:{}'.format(res.text))
+            res = requests.post(BASEURL + "projects/saveproject", headers=headers, data=json.dumps(data))
+            LOG.info('saveproject(): SERVER SAYS:{}'.format(res.text))
             LOG.info(res.status_code)
         else:
             LOG.info("User not logged in!")
@@ -264,6 +264,7 @@ class Editor:
         self.username = None
         self.all_tasks = None
         self._docx = "document.docx"
+        self._html = "tallship.html"
 
     def gen_users(self, user_number=USERNO):
         """
@@ -486,7 +487,7 @@ class Editor:
         LOG.info("username={}: savetext(): Entering".format(self.username))
         if self.user_token is not None and self.projectid is not None:
             headers = {"Content-Type" : "application/json"}
-            text = codecs.open("/home/ntkleynhans/tmp.html", "r", "utf-8").read()
+            text = codecs.open(self._html, "r", "utf-8").read()
             data = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid, "text" : text}
             res = requests.post(BASEURL + "editor/savetext", headers=headers, data=json.dumps(data))
             print('SERVER SAYS:', res.text)
@@ -508,7 +509,7 @@ class Editor:
                 projectid = opt["projectid"]
                 LOG.info("SAVE: tid={} pid={}".format(taskid, projectid))
                 headers = {"Content-Type" : "application/json"}
-                text = codecs.open("/home/ntkleynhans/tmp.html", "r", "utf-8").read()
+                text = codecs.open(self._html, "r", "utf-8").read()
                 data = {'token' : self.user_token, 'projectid' : projectid, 'taskid' : taskid, "text" : text}
                 res = requests.post(BASEURL + "editor/savetext", headers=headers, data=json.dumps(data))
                 print('SERVER SAYS:', res.text)
@@ -689,7 +690,7 @@ class Editor:
         LOG.info("username={}: align(): Entering".format(self.username))
         if self.user_token is not None and self.projectid is not None:
             headers = {"Content-Type" : "application/json"}
-            data = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid}
+            data = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid, 'subsystem' : 'en_ZA_16000'}
             res = requests.post(BASEURL + "editor/align", headers=headers, data=json.dumps(data))
             print('SERVER SAYS:', res.text)
             LOG.info("username={}: align(): {}".format(self.username, res.text))
@@ -834,7 +835,7 @@ if __name__ == "__main__":
             proj.login(usr)
             proj.createproject()
             proj.uploadaudio()
-            proj.createtasks()
+            proj.saveproject()
             proj.assigntasks()
             proj.logout()
 
