@@ -481,7 +481,7 @@ class Projects(auth.UserAuth):
                       "putresult": os.path.join(APPSERVER, "projects", inurl),
                       "service" : self._config["speechservices"]["diarize"]["name"],
                       "subsystem" : self._config["speechservices"]["diarize"]["subsystem"]}
-            LOG.debug(os.path.join(SPEECHSERVER, self._config["speechservices"]["diarize"]))
+            LOG.debug("posting job")
             reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]["diarize"]["url"]), data=json.dumps(jobreq))
             reqstatus = reqstatus.json()
             #reqstatus = {"jobid": auth.gen_token()} #DEMIT: dummy call for testing!
@@ -552,11 +552,11 @@ class Projects(auth.UserAuth):
                 segments = diarize_parse_ctm(data["CTM"])
                 LOG.debug("(projectid={} jobid={}) CTM parsing successful...".format(projectid, row["jobid"]))
                 tasks = []
-                for taskid, (starttime, endtime) in enumerate(segments):
-                    tasks.append({"taskid": taskid, "projectid": projectid, "start": starttime, "end": endtime})
+                for taskid, (speaker, channel, starttime, endtime, tag) in enumerate(segments):
+                    tasks.append({"taskid": taskid, "projectid": projectid, "start": starttime, "end": endtime, "speaker" : speaker})
                 #Delete current list of tasks and re-insert from diarize result
                 db.delete_tasks(projectid)
-                db.insert_tasks(projectid, tasks, fields=["taskid", "projectid", "start", "end"])
+                db.insert_tasks(projectid, tasks, fields=["taskid", "projectid", "start", "end", "speaker"])
                 db.unlock_project(projectid)
             LOG.info("OK: (projectid={}) Diarization result received successfully".format(projectid))
         except Exception as e: #"unlock" and recover error status
@@ -759,8 +759,8 @@ def approx_eq(a, b, epsilon=0.01):
     return abs(a - b) < epsilon
 
 def diarize_parse_ctm(ctm):
-    segments = [map(float, line.split()) for line in ctm.splitlines()]
-    segments.sort(key=lambda x:x[0]) #by starttime
+    segments = [line.split() for line in ctm.splitlines()]
+    segments.sort(key=lambda x:float(x[2])) #by starttime
     return segments
 
 class PrevJobError(Exception):
