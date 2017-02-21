@@ -18,7 +18,8 @@ import threading
 import time
 
 # Some constants
-BASEURL = "http://127.0.0.1:9999/wsgi/"
+#BASEURL = "http://127.0.0.1:9999/wsgi/"
+BASEURL = "http://rkv-must1.puk.ac.za:88/app/"
 USERNO = 1
 RANDOM_WAIT_LOW = 0.2
 RANDOM_WAIT_HIGH = 0.3
@@ -72,6 +73,7 @@ class Project:
         self.users = {}
         self.test_audio = 'tallship.ogg'
         self.test_audio_duration = 5.154830
+        self.rootpw = "aYMyNW6wdf7uRzFH"
 
     def gen_users(self, user_number=USERNO):
         """
@@ -97,7 +99,7 @@ class Project:
         if self.admin_token is None:
             LOG.info("Admin logging in")
             headers = {"Content-Type" : "application/json"}
-            data = {"username": "root", "password": "123456", "role" : "project"}
+            data = {"username": "root", "password": self.rootpw, "role" : "admin"}
             res = requests.post(BASEURL + "admin/login", headers=headers, data=json.dumps(data))
             LOG.info('adminlin(): SERVER SAYS:{}'.format(res.text))
             LOG.info(res.status_code)
@@ -265,6 +267,7 @@ class Editor:
         self.all_tasks = None
         self._docx = "document.docx"
         self._html = "tallship.html"
+        self.rootpw = "aYMyNW6wdf7uRzFH"
 
     def gen_users(self, user_number=USERNO):
         """
@@ -315,7 +318,7 @@ class Editor:
         """
         if self.admin_token is None:
             headers = {"Content-Type" : "application/json"}
-            data = {"username": "root", "password": "123456", "role" : "admin"}
+            data = {"username": "root", "password": self.rootpw, "role" : "admin"}
             res = requests.post(BASEURL + "admin/login", headers=headers, data=json.dumps(data))
             print('SERVER SAYS:', res.text)
             print(res.status_code)

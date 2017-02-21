@@ -2,7 +2,7 @@
     "testid": 1,
 
     "auser": "root",
-    "apassw": "123456",
+    "apassw": "aYMyNW6wdf7uRzFH",
     "atoken": null,
 
     "user": "neil",
@@ -14,7 +14,7 @@
     "email": "neil@organisation.org",
 
     "projectname": "masefield",
-    "projectcat": "NCOP",
+    "projectcat": "General",
     "audiofile": "./tallship.ogg",
     "audiodur": 5.154830,
     "pid": null,

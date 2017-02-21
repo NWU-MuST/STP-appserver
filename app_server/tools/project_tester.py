@@ -25,7 +25,8 @@ except ImportError:
 import numpy as np
 
 
-DEF_BASEURL = "http://127.0.0.1:9999/wsgi/"
+#DEF_BASEURL = "http://127.0.0.1:9999/wsgi/"
+DEF_BASEURL = "http://rkv-must1.puk.ac.za:88/app/"
 DEF_LOGFILE = "project_tester.log"
 DEF_LOGLEVEL = 20 #INFO
 DEF_TESTFILE = "ptest01.json"
@@ -99,7 +100,7 @@ class Test:
                                 ("diarizeaudio", {"u_loggedin", "u_hasprojects", "p_loaded", "p_hasaudio", "p_unlocked", "p_unassigned"}),
                                 ("diarizeaudio2", {"u_loggedin", "u_hasprojects", "p_loaded", "p_hasaudio", "p_unlocked", "p_unassigned"}),
                                 ("unlockproject", {"u_loggedin", "u_hasprojects", "p_loaded", "p_locked"}),
-                                ("createtasks", {"u_loggedin", "u_hasprojects", "p_loaded", "p_hasaudio", "p_unlocked", "p_unassigned"}),
+                                ("saveproject", {"u_loggedin", "u_hasprojects", "p_loaded", "p_hasaudio", "p_unlocked", "p_unassigned"}),
                                 ("assigntasks", {"u_loggedin", "u_hasprojects", "p_loaded", "p_hasaudio", "p_saved", "p_unlocked", "p_unassigned"}),
                                 ("updateproject", {"u_loggedin", "u_hasprojects", "p_loaded", "p_hasaudio", "p_saved", "p_unlocked", "p_assigned"})])
         self.forever = forever
@@ -429,13 +430,13 @@ class Test:
         self.state["p_unlocked"] = False
         self.state["p_locked"] = True
 
-    def createtasks(self, token=None, projectid=None, tasks=None, project=None):
+    def saveproject(self, token=None, projectid=None, tasks=None, project=None):
         LOG.debug("ENTER")
         data = {"token": token or self.token,
                 "projectid": projectid or self.pid,
                 "tasks": tasks or self.savetasks,
                 "project": project or self.saveproj}
-        result = post("projects/createtasks", data)
+        result = post("projects/saveproject", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))
         if result.status_code != 200:
@@ -479,7 +480,6 @@ class Test:
         if result.status_code != 200:
             raise RequestFailed(result.text)
         self.state["p_updated"] = True
-
 
     def unlockproject(self, token=None, projectid=None):
         LOG.debug("ENTER")
@@ -586,7 +586,7 @@ if __name__ == "__main__":
                     print("LOADPROJECT - load projects")
                     print("UPLOADAUDIO - upload audio to project")
                     print("GETAUDIO - retrieve project audio")
-                    print("CREATETASKS - create and save tasks for a project")
+                    print("SAVEPROJECT - update project and create/save tasks for a project")
                     print("ASSIGNTASKS - assign tasks to editors")
                     print("DIARIZEAUDIO - save tasks to a project via diarize request (simulate speech server)\n")
                     print("DIARIZEAUDIO2 - like DIARIZEAUDIO but withouth speech server (project stays locked)\n")
