@@ -107,7 +107,9 @@
 	    "/editor/reassigntask" : { "method" : "service.editor.Editor.reassign_task",
 					  "parameters" : ["token", "taskid", "projectid" ] },
 	    "/editor/buildmaster" : { "method" : "service.editor.Editor.buildmaster",
-					  "parameters" : ["token", "projectid" ] }
+					  "parameters" : ["token", "projectid" ] },
+ 	    "/editor/listlanguages" : { "method" : "service.editor.Editor.list_languages",
+					  "parameters" : ["token" ] }
 	},
 
     	"GET" : {
