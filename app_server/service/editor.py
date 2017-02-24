@@ -695,6 +695,22 @@ class Editor(auth.UserAuth):
         """
         return {"languages" : self._config["languages"]}
 
+    @authlog("Update assigned language")
+    def update_language(self, request):
+        """Update language
+        """
+        try:
+            if request["language"] not in self._config["languages"]:
+                raise NotFoundError("Language not supported by speech services!")
+            with self.db as db:
+                db.check_project_task(request["projectid"], request["taskid"], check_err=False)
+                year = db.get_project(request["projectid"], fields=["year"])["year"]
+                db.update_language(request["projectid"], request["taskid"], year, request["language"])
+            return "Language changed!"
+        except Exception as e:
+            LOG.error("Update language fail: {}".format(e))
+            raise
+
 
 class EditorDB(sqlite.Connection):
     def lock(self):
@@ -840,6 +856,9 @@ class EditorDB(sqlite.Connection):
         row = dict(row)
         self.execute("UPDATE T{} SET editing='{}' WHERE taskid=? AND projectid=?".format(year, row["editor"]), (taskid, projectid))
         self.execute("UPDATE T{} SET completed=? WHERE taskid=? AND projectid=?".format(year), (None, taskid, projectid))
+
+    def update_language(self, projectid, taskid, year, language):
+        self.execute("UPDATE T{} SET language='{}' WHERE taskid=? AND projectid=?".format(year, language), (taskid, projectid))
 
     def insert_incoming(self, projectid, taskid, inurl, servicetype):
         self.execute("INSERT INTO incoming (projectid, taskid, url, servicetype) VALUES (?,?,?,?)", (projectid, taskid, inurl, servicetype))

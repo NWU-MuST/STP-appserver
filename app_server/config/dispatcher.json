@@ -109,7 +109,9 @@
 	    "/editor/buildmaster" : { "method" : "service.editor.Editor.buildmaster",
 					  "parameters" : ["token", "projectid" ] },
  	    "/editor/listlanguages" : { "method" : "service.editor.Editor.list_languages",
-					  "parameters" : ["token" ] }
+					  "parameters" : ["token" ] },
+	    "/editor/updatelanguage" : { "method" : "service.editor.Editor.update_language",
+				   "parameters" : ["token", "taskid", "projectid", "language"] }
 	},
 
     	"GET" : {
