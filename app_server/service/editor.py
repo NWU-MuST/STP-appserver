@@ -689,6 +689,12 @@ class Editor(auth.UserAuth):
             LOG.error("Get text failed: {}".format(e))
             raise
 
+    @authlog("Returning list of languages")
+    def list_languages(self, request):
+        """Return languages
+        """
+        return {"languages" : self._config["languages"]}
+
 
 class EditorDB(sqlite.Connection):
     def lock(self):
