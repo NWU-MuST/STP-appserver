@@ -179,7 +179,7 @@ class Test:
             raise RequestFailed(result.text)
         self.atoken = None
 
-    def adduser(self, token=None, username=None, password=None, name=None, surname=None, email=None):
+    def adduser(self, token=None, username=None, password=None, name=None, surname=None, email=None, role=None):
         LOG.debug("ENTER")
         data = {"token": token or self.atoken,
                 "username": username or self.user,
@@ -187,7 +187,7 @@ class Test:
                 "name": name or self.name,
                 "surname": surname or self.surname,
                 "email": email or self.email,
-                "role" : "project;editor"}
+                "role" : role or self.role}
         result = post("admin/adduser", data)
         LOG.info("SERVSTAT: {}".format(result.status_code))
         LOG.info("SERVMESG: {}".format(result.text))

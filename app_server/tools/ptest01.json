@@ -12,6 +12,7 @@
     "name": "Neil",
     "surname": "Kleynhans",
     "email": "neil@organisation.org",
+    "role" : "project;tester",
 
     "projectname": "masefield",
     "projectcat": "General",

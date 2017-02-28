@@ -552,7 +552,7 @@ class Projects(auth.UserAuth):
                 segments = diarize_parse_ctm(data["CTM"])
                 LOG.debug("(projectid={} jobid={}) CTM parsing successful...".format(projectid, row["jobid"]))
                 tasks = []
-                for taskid, (speaker, channel, starttime, endtime, tag) in enumerate(segments):
+                for taskid, (speaker, starttime, endtime) in enumerate(segments):
                     tasks.append({"taskid": taskid, "projectid": projectid, "start": starttime, "end": endtime, "speaker" : speaker})
                 #Delete current list of tasks and re-insert from diarize result
                 db.delete_tasks(projectid)
@@ -760,7 +760,7 @@ def approx_eq(a, b, epsilon=0.01):
 
 def diarize_parse_ctm(ctm):
     segments = [line.split() for line in ctm.splitlines()]
-    segments.sort(key=lambda x:float(x[2])) #by starttime
+    segments.sort(key=lambda x:float(x[1])) #by starttime
     return segments
 
 class PrevJobError(Exception):
