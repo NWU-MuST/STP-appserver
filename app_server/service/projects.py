@@ -477,10 +477,15 @@ class Projects(auth.UserAuth):
         #Make job request:
         try:
             # TEMPORARILY COMMENTED OUT FOR TESTING WITHOUT SPEECHSERVER:
+            if "chunksize" in request:
+                chunksize = request["chunksize"]
+            else:
+                chunksize = self._config["speechservices"]["diarize"]["chunksize"]
             jobreq = {"token" : self._speech.token(), "getaudio": os.path.join(APPSERVER, "projects", outurl),
                       "putresult": os.path.join(APPSERVER, "projects", inurl),
                       "service" : self._config["speechservices"]["diarize"]["name"],
-                      "subsystem" : self._config["speechservices"]["diarize"]["subsystem"]}
+                      "subsystem" : self._config["speechservices"]["diarize"]["subsystem"],
+                      "chunksize" : chunksize}
             LOG.debug("posting job")
             reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]["diarize"]["url"]), data=json.dumps(jobreq))
             reqstatus = reqstatus.json()
@@ -561,7 +566,7 @@ class Projects(auth.UserAuth):
             LOG.info("OK: (projectid={}) Diarization result received successfully".format(projectid))
         except Exception as e: #"unlock" and recover error status
             with self.db as db:
-                db.unlock_project(projectid, errstatus=data["errstatus"])
+                db.unlock_project(projectid, errstatus=data["ERROR"])
             LOG.info("FAIL: {}".format(e))
             raise
 

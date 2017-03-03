@@ -4,6 +4,6 @@
   "toklife": 31536000,
   "categories": ["National Assembly", "National Council of Provinces", "Committees", "General"],
   "languages" : ["English", "Afrikaans", "isiZulu", "Setswana"],
-  "speechservices": {"diarize": {"url" : "jobs/addjob", "name" : "diarize_long", "subsystem" : "default"}},
+  "speechservices": {"diarize": {"url" : "jobs/addjob", "name" : "diarize_long", "chunksize" : "600", "subsystem" : "default"}},
   "role" : "project"
 }
