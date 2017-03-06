@@ -18,8 +18,8 @@ import threading
 import time
 
 # Some constants
-#BASEURL = "http://127.0.0.1:9999/wsgi/"
-BASEURL = "http://rkv-must1.puk.ac.za:88/app/"
+BASEURL = "http://127.0.0.1:9999/wsgi/"
+#BASEURL = "http://rkv-must1.puk.ac.za:88/app/"
 USERNO = 1
 RANDOM_WAIT_LOW = 0.2
 RANDOM_WAIT_HIGH = 0.3
@@ -73,7 +73,8 @@ class Project:
         self.users = {}
         self.test_audio = 'tallship.ogg'
         self.test_audio_duration = 5.154830
-        self.rootpw = "aYMyNW6wdf7uRzFH"
+        #self.rootpw = "aYMyNW6wdf7uRzFH"
+        self.rootpw = "123456"
 
     def gen_users(self, user_number=USERNO):
         """
@@ -267,7 +268,9 @@ class Editor:
         self.all_tasks = None
         self._docx = "document.docx"
         self._html = "tallship.html"
-        self.rootpw = "aYMyNW6wdf7uRzFH"
+        #self.rootpw = "aYMyNW6wdf7uRzFH"
+        self.rootpw = "123456"
+        self.subsystem = "ts_ZA_16000::default"
 
     def gen_users(self, user_number=USERNO):
         """
@@ -676,7 +679,7 @@ class Editor:
         LOG.info("username={}: recognize(): Entering".format(self.username))
         if self.user_token is not None and self.projectid is not None:
             headers = {"Content-Type" : "application/json"}
-            data = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid, 'subsystem' : 'en_ZA_16000'}
+            data = {'token' : self.user_token, 'projectid' : self.projectid, 'taskid' : self.taskid, 'subsystem' : self.subsystem}
             res = requests.post(BASEURL + "editor/recognize", headers=headers, data=json.dumps(data))
             print('SERVER SAYS:', res.text)
             LOG.info("username={}: recognize(): {}".format(self.username, res.text))
