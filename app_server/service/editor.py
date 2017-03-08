@@ -323,8 +323,8 @@ class Editor(auth.UserAuth):
             request["service"] = self._config["speechservices"]["services"]["recognize"]
             if "subsystem" not in request:
                 if "language" in request:
-                    if request["language"] in self._config["speechservices"]["language"]:
-                        request["subsystem"] = self._config["speechservices"]["language"][request["language"]]
+                    if request["language"] in self._config["speechservices"]["recognize"]:
+                        request["subsystem"] = self._config["speechservices"]["recognize"][request["language"]]
                     else:
                         raise NotFoundError("Language not supported by speech server!")
                 else:
@@ -370,8 +370,8 @@ class Editor(auth.UserAuth):
             request["service"] = self._config["speechservices"]["services"]["align"]
             if "subsystem" not in request:
                 if "language" in request:
-                    if request["language"] in self._config["speechservices"]["language"]:
-                        request["subsystem"] = self._config["speechservices"]["language"][request["language"]]
+                    if request["language"] in self._config["speechservices"]["align"]:
+                        request["subsystem"] = self._config["speechservices"]["align"][request["language"]]
                     else:
                         raise NotFoundError("Language not supported by speech server!")
                 else:
