@@ -14,15 +14,22 @@ RUN a2enmod proxy headers
 
 #Setup user and source code for platform
 # IF NEEDED: Change FSUID to harmonize with host system user's UID (mounted file system)
-ENV FSUID=1000
-RUN useradd -u $FSUID -ms /bin/bash dac
+ARG UID
+ARG GID
+
+RUN groupadd -g $GID dac
+RUN useradd -u $UID -g $GID -ms /bin/bash dac
 ENV HOME=/home/dac
 
 #Next line should correspond to definitions in `app_server/config/*`
 ENV PERSISTENT_FS=/mnt/stp
 # Set the following on commandline
-ENV SPEECHSERVER=http://10.0.0.22:9950/wsgi
-ENV APPSERVER=http://10.0.0.22:9999/wsgi
+
+ARG SPEECHSERVER
+ARG APPSERVER
+
+#ENV SPEECHSERVER=http://10.0.0.22:9950/wsgi
+#ENV APPSERVER=http://10.0.0.22:9999/wsgi
 WORKDIR $HOME
 
 #Install application server
@@ -38,4 +45,4 @@ USER root
 WORKDIR $HOME/source/stp/app_server
 CMD chown -R dac:dac $PERSISTENT_FS && \
     /usr/sbin/apache2ctl start & \
-    uwsgi --uid $FSUID -l 20 -p 10 --master --enable-threads --plugin /usr/lib/uwsgi/plugins/python27_plugin.so --socket 127.0.0.1:9090 --wsgi-file wsgi.py  --env services_config=config/dispatcher.json
+    uwsgi --uid $UID -l 20 -p 10 --master --enable-threads --plugin /usr/lib/uwsgi/plugins/python27_plugin.so --socket 127.0.0.1:9090 --wsgi-file wsgi.py  --env services_config=config/dispatcher.json
