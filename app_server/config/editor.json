@@ -2,7 +2,7 @@
   "projectdb": "/mnt/stp/projects.db",
   "storage": "/mnt/stp/storage",
   "toklife": 31536000,
-  "speechservices": { "services" : {"diarize": "diarize_html", "align" : "align_html", "recognize" : "recognize_html" },
+  "speechservices": { "services" : {"diarize": "diarize_html", "align" : "align_html", "recognize" : "recognize_html" }},
   "API" : {"add" : "jobs/addjob", "delete" : "jobs/deletejob"},
   "recognize" : {"English" : "en_ZA_16000::default", "isiZulu" : "zu_ZA_16000::default", "Setswana" : "ts_ZA_16000::default", "Afrikaans" : "af_ZA_16000::default"},
   "align" : {"English" : "engZA", "isiZulu" : "zulZA", "Setswana" : "tsnZA", "Afrikaans" : "afrZA"},
