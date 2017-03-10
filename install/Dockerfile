@@ -25,11 +25,6 @@ ENV HOME=/home/dac
 ENV PERSISTENT_FS=/mnt/stp
 # Set the following on commandline
 
-ARG SPEECHSERVER
-ARG APPSERVER
-
-#ENV SPEECHSERVER=http://10.0.0.22:9950/wsgi
-#ENV APPSERVER=http://10.0.0.22:9999/wsgi
 WORKDIR $HOME
 
 #Install application server
@@ -41,8 +36,15 @@ RUN chown -R dac:dac source
 ENV USERNAME=dac
 
 #Run application server
+
+# You must set following environment variables when running docker
+#ENV UID=
+#ENV GID=
+#ENV SPEECHSERVER=
+#ENV APPSERVER=
+
 USER root
 WORKDIR $HOME/source/stp/app_server
 CMD chown -R dac:dac $PERSISTENT_FS && \
     /usr/sbin/apache2ctl start & \
-    uwsgi --uid $UID -l 20 -p 10 --master --enable-threads --plugin /usr/lib/uwsgi/plugins/python27_plugin.so --socket 127.0.0.1:9090 --wsgi-file wsgi.py  --env services_config=config/dispatcher.json
+    uwsgi --uid $UID --gid $GID -l 20 -p 10 --master --enable-threads --plugin /usr/lib/uwsgi/plugins/python27_plugin.so --socket 127.0.0.1:9090 --wsgi-file wsgi.py  --env services_config=config/dispatcher.json
