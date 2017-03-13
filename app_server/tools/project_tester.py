@@ -25,8 +25,8 @@ except ImportError:
 import numpy as np
 
 
-#DEF_BASEURL = "http://127.0.0.1:9999/wsgi/"
-DEF_BASEURL = "http://rkv-must1.puk.ac.za:88/app/"
+DEF_BASEURL = "http://127.0.0.1:9999/wsgi/"
+#DEF_BASEURL = "http://rkv-must1.puk.ac.za:88/app/"
 DEF_LOGFILE = "project_tester.log"
 DEF_LOGLEVEL = 20 #INFO
 DEF_TESTFILE = "ptest01.json"
@@ -204,6 +204,8 @@ class Test:
         if result.status_code != 200:
             raise RequestFailed(result.text)
 
+
+
 ### NON-ADMIN
     def login(self, username=None, password=None):
         LOG.debug("ENTER")
@@ -244,7 +246,6 @@ class Test:
         self.token = None
         self.state["u_notloggedin"] = True
         self.state["u_loggedin"] = False
-
 
     def changepassword(self, token=None, username=None, password=None):
         LOG.debug("ENTER")
@@ -493,6 +494,16 @@ class Test:
         self.state["p_unlocked"] = True
         self.state["p_locked"] = False
 
+    def resetpassword(self, token=None, username=None):
+        LOG.debug("ENTER")
+        data = {"token": token or self.atoken,
+                "username": username or self.user}
+        result = post("projects/resetpassword", data)
+        LOG.info("SERVSTAT: {}".format(result.status_code))
+        LOG.info("SERVMESG: {}".format(result.text))
+        if result.status_code != 200:
+            raise RequestFailed(result.text)
+
 def runtest(args):
     baseurl, testdata, projectdbfile, mindelay, maxdelay, logfile, loglevel = args
     ################################################################################
@@ -593,6 +604,7 @@ if __name__ == "__main__":
                     print("UPDATEPROJECT - update project and associated tasks")
                     print("UPDATEPROJECT2 - update projectstatus")
                     print("UNLOCKPROJECT - unlock project (can test this against DIARIZEAUDIO2)")
+                    print("RESETPASSWORD - reset user's password")
                     print("EXIT - quit")
                 else:
                     try:

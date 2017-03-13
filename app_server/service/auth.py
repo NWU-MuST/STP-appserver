@@ -15,6 +15,7 @@ import time
 import uuid, base64
 import logging
 import os
+import smtplib
 
 try:
     from sqlite3 import dbapi2 as sqlite
@@ -167,7 +168,23 @@ class UserAuth(object):
             tmppw = gen_pw()
             tmppwhash = bcrypt.hashpw(tmppw, salt)
             db_curs.execute("UPDATE users SET tmppwhash=? WHERE username=?", (tmppwhash, username))
-        #TODO: NotImplementedError: At some point email this automatically to the user
+
+            subject = 'Temporary password created for your account'
+            body = "The administrator has reset your password.\r\nYour temporary password is: {}\r\nLogin with with this temporary password.\r\n".format(tmppw)
+            email_text = "From: STP Admin <{}>\r\nTo: {} {} <{}>\r\nSubject: {}\r\n\r\n{}\r\n".format(self._config["gmail_user"], name, surname, email, subject, body)
+
+            try:
+                server = smtplib.SMTP_SSL(self._config["gmail_smtp"], int(self._config["gmail_smtp_port"]))
+                server.ehlo()
+                server.login(self._config["gmail_user"], self._config["gmail_password"])
+                server.sendmail(self._config["gmail_user"], [email], email_text)
+                server.close()
+
+            except Exception as e:
+                LOG.error(str(e))
+                db_curs.execute("UPDATE users SET tmppwhash=? WHERE username=?", (tmppwhash, username))
+                raise RuntimeError("Cannot send email to user!")
+
         LOG.info("Temp password created: {}".format(username))
         return tmppw
 

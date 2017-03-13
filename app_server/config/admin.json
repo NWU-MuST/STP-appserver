@@ -4,5 +4,9 @@
  "tmpdir" : "/mnt/stp/storage/tmp",
  "toklife": 31536000,
  "role" : "admin",
- "speechservices": {"customlm": "jobs/addjob"}
+ "speechservices": {"customlm": "jobs/addjob"},
+ "gmail_user" : "stp.sudoer@gmail.com",
+ "gmail_password" : "zTSvdBJW2Y3K_6ZV",
+ "gmail_smtp" : "smtp.gmail.com",
+ "gmail_smtp_port" : "465"
 }

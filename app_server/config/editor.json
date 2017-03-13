@@ -7,5 +7,9 @@
   "recognize" : {"English" : "en_ZA_16000::default", "isiZulu" : "zu_ZA_16000::default", "Setswana" : "ts_ZA_16000::default", "Afrikaans" : "af_ZA_16000::default"},
   "align" : {"English" : "engZA", "isiZulu" : "zulZA", "Setswana" : "tsnZA", "Afrikaans" : "afrZA"},
   "languages" : ["English", "Afrikaans", "isiZulu", "Setswana"],
-  "role" : "editor"
+  "role" : "editor",
+  "gmail_user" : "stp.sudoer@gmail.com",
+  "gmail_password" : "zTSvdBJW2Y3K_6ZV",
+  "gmail_smtp" : "smtp.gmail.com",
+  "gmail_smtp_port" : "465"
 }

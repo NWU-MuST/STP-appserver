@@ -5,5 +5,9 @@
   "categories": ["National Assembly", "National Council of Provinces", "Committees", "General"],
   "languages" : ["English", "Afrikaans", "isiZulu", "Setswana"],
   "speechservices": {"diarize": {"url" : "jobs/addjob", "name" : "diarize_long", "chunksize" : "600", "subsystem" : "default"}},
-  "role" : "project"
+  "role" : "project",
+  "gmail_user" : "stp.sudoer@gmail.com",
+  "gmail_password" : "zTSvdBJW2Y3K_6ZV",
+  "gmail_smtp" : "smtp.gmail.com",
+  "gmail_smtp_port" : "465"
 }

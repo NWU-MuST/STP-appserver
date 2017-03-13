@@ -2,17 +2,17 @@
     "testid": 1,
 
     "auser": "root",
-    "apassw": "aYMyNW6wdf7uRzFH",
+    "apassw": "123456",
     "atoken": null,
 
     "user": "neil",
-    "passw": "neil",
+    "passw": "^jkYUm0",
     "passw_": "neil2",
     "token": null,
     "name": "Neil",
     "surname": "Kleynhans",
-    "email": "neil@organisation.org",
-    "role" : "project;tester",
+    "email": "ntkleynhans@gmail.com",
+    "role" : "project;editor",
 
     "projectname": "masefield",
     "projectcat": "General",
