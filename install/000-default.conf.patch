@@ -9,7 +9,7 @@
 +        <Location /wsgi>
 +                Order deny,allow
 +                Allow from all
-+                ProxyPass uwsgi://127.0.0.1:9090/
++                ProxyPass uwsgi://127.0.0.1:9090/ connectiontimeout=600 timeout=720
 +                ProxyPassReverse uwsgi://127.0.0.1:9090/
 +        </Location>
  </VirtualHost>

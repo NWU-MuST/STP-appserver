@@ -42,9 +42,10 @@ ENV USERNAME=dac
 #ENV GID=
 #ENV SPEECHSERVER=
 #ENV APPSERVER=
+#ENV SO_SNDTIMEO=
 
 USER root
 WORKDIR $HOME/source/stp/app_server
 CMD chown -R dac:dac $PERSISTENT_FS && \
     /usr/sbin/apache2ctl start & \
-    uwsgi --uid $UID --gid $GID -l 20 -p 10 --master --enable-threads --plugin /usr/lib/uwsgi/plugins/python27_plugin.so --socket 127.0.0.1:9090 --wsgi-file wsgi.py  --env services_config=config/dispatcher.json
+    uwsgi --uid $UID --gid $GID -l 20 -p 10 -z 600 -t 600 --master --enable-threads --plugin /usr/lib/uwsgi/plugins/python27_plugin.so --socket 127.0.0.1:9090 --wsgi-file wsgi.py  --env services_config=config/dispatcher.json
