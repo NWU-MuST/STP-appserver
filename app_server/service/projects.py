@@ -437,8 +437,9 @@ class Projects(auth.UserAuth):
             if row["audiofile"]:
                 os.remove(row["audiofile"])
             return 'Audio Saved!'
-        except:
+        except Exception as e:
             LOG.debug("(projectid={}) FAIL: Unlocking".format(request["projectid"]))
+            LOG.error(str(e))
             #Unlock the project and set errstatus
             with self.db as db:
                 db.unlock_project(request["projectid"], errstatus="upload_audio")
