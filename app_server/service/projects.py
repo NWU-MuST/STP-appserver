@@ -318,7 +318,7 @@ class Projects(auth.UserAuth):
            after task assignment if updating tasks.
         """
         taskupdatefields = {"editor", "speaker", "language", "editing"}
-        projectupdatefields = {"projectname", "category", "projectmanager", "collator", "projectstatus"}
+        projectupdatefields = {"projectname", "category", "projectmanager", "collator", "projectstatus", "errstatus"}
         projectdata = dict((k, request["project"][k]) for k in projectupdatefields if k in request["project"])
         if "tasks" in request:
             #Check taskid in all tasks and taskids unique
@@ -443,7 +443,7 @@ class Projects(auth.UserAuth):
             #Unlock the project and set errstatus
             with self.db as db:
                 db.unlock_project(request["projectid"], errstatus="upload_audio")
-            raise
+            raise RuntimeError(str(e))
 
     @authlog("Returning audio for project")
     def get_audio(self, request):

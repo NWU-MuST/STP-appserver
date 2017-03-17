@@ -284,7 +284,8 @@ class Editor(auth.UserAuth):
 
             request["service"] = self._config["speechservices"]["services"]["diarize"]
             if "subsystem" not in request:
-                raise NotFoundError("No diarizer subsystem specified!")
+                request["subsystem"] = "default"
+                #raise NotFoundError("No diarizer subsystem specified!")
 
             return self._speech_job(request, project, task)
         except Exception as e:
