@@ -101,7 +101,7 @@ class Projects(auth.UserAuth):
         self.db = sqlite.connect(self._config['projectdb'], factory=ProjectDB)
         self.db.row_factory = sqlite.Row
 
-    @authlog("Returning list of categories")
+    @authlog("Returning list of users")
     def get_users(self, request):
         """Return all users
         """
@@ -233,7 +233,7 @@ class Projects(auth.UserAuth):
             prevtask_end = task["end"]
             task["taskid"] = taskid
             task["projectid"] = request["projectid"]
-            task["editing"] = task["editor"]
+            task["editing"] = request["editor"]
 
         with self.db as db:
             #This will lock the DB:

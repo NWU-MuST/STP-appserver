@@ -103,7 +103,7 @@
 	    "/editor/clearerror" : { "method" : "service.editor.Editor.clear_error",
 				   "parameters" : ["token", "taskid", "projectid"] },
 	    "/editor/loadusers" : { "method" : "service.editor.Editor.get_users",
-					  "parameters" : ["token", "role" ] },
+					  "parameters" : ["token"] },
 	    "/editor/reassigntask" : { "method" : "service.editor.Editor.reassign_task",
 					  "parameters" : ["token", "taskid", "projectid" ] },
 	    "/editor/buildmaster" : { "method" : "service.editor.Editor.buildmaster",

@@ -88,6 +88,19 @@ class Editor(auth.UserAuth):
         self.db = sqlite.connect(self._config['projectdb'], factory=EditorDB)
         self.db.row_factory = sqlite.Row
 
+    @authlog("Returning list of users")
+    def get_users(self, request):
+        """Return all users
+        """
+        users = dict()
+        with sqlite.connect(self._config["authdb"]) as db_conn:
+            db_curs = db_conn.cursor()
+            for entry in db_curs.execute("SELECT * FROM users").fetchall():
+                username, pwhash, salt, name, surname, email, role, tmppwhash = entry
+                users[username] = {"name": name, "surname": surname, "email": email, "role" : role}
+        LOG.info("Returning user list ({})".format(username))
+        return users
+
     @authlog("Return user's tasks")
     def load_tasks(self, request):
         """
