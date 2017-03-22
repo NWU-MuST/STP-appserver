@@ -577,8 +577,6 @@ class Projects(auth.UserAuth):
         """
         with self.db as db:
             row = db.clearerror_project(request["projectid"])
-            if not row:
-                raise NotFoundError("Project not found")
         return "Project Error Status Cleared!"
 
 class ProjectDB(sqlite.Connection):
