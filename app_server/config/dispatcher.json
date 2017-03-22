@@ -69,6 +69,8 @@
 					 "parameters" : ["token", "projectid"] },
 	    "/projects/unlockproject" : { "method" : "service.projects.Projects.unlock_project",
 					  "parameters" : ["token", "projectid"] },
+	    "/projects/clearerror" : { "method" : "service.projects.Projects.clear_error",
+				   "parameters" : ["token", "projectid"] },
 
 	    "/editor/login" : { "method" : "service.editor.Editor.login",
 				  "parameters" : ["username", "password", "role"] },

@@ -571,6 +571,15 @@ class Projects(auth.UserAuth):
             LOG.info("FAIL: {}".format(e))
             raise
 
+    @authlog("Clear error state of project")
+    def clear_error(self, request):
+        """Clear project error state
+        """
+        with self.db as db:
+            row = db.clearerror_project(request["projectid"])
+            if not row:
+                raise NotFoundError("Project not found")
+        return "Project Error Status Cleared!"
 
 class ProjectDB(sqlite.Connection):
     def lock(self):
