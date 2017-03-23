@@ -233,7 +233,7 @@ class Projects(auth.UserAuth):
             prevtask_end = task["end"]
             task["taskid"] = taskid
             task["projectid"] = request["projectid"]
-            task["editing"] = request["editor"]
+            task["editing"] = task["editor"]
 
         with self.db as db:
             #This will lock the DB:
