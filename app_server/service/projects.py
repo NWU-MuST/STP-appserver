@@ -567,7 +567,12 @@ class Projects(auth.UserAuth):
             LOG.info("OK: (projectid={}) Diarization result received successfully".format(projectid))
         except Exception as e: #"unlock" and recover error status
             with self.db as db:
-                db.unlock_project(projectid, errstatus=data["ERROR"])
+                if "errstatus" in data:
+                    if data["errstatus"] is None:
+                        data["errstatus"] = "Requested speech service error!"
+                    db.unlock_project(projectid, errstatus=data["errstatus"])
+                else:
+                    db.unlock_project(projectid, errstatus="{}".format(str(e)))
             LOG.info("FAIL: {}".format(e))
             raise
 

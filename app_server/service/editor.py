@@ -549,9 +549,11 @@ class Editor(auth.UserAuth):
             LOG.error("Speech processing failure: {}".format(e))
             with self.db as db:
                 if "errstatus" in data:
-                    if  data["errstatus"] != 0:
+                    if  len(data["errstatus"]) != 0:
                         LOG.error("Speech processing failure: {}".format(data["errstatus"]))
                         db.set_errstatus(projectid, taskid, year, data["errstatus"])
+                    elif data["errstatus"] is None:
+                        db.set_errstatus(projectid, taskid, year, "Requested Speech Service Error!")
                     else:
                         db.set_errstatus(projectid, taskid, year, "{}".format(e))
                 else:
