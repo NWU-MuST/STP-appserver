@@ -227,6 +227,7 @@ def application(env, start_response):
         start_response("501 Not Implemented", response_header)
         return [response]
     except Exception as e:
+        LOG.error("{}".format(e))
         response, response_header = build_json_response(e)
         start_response("500 Internal Server Error", response_header)
         return [response]

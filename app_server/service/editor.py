@@ -472,11 +472,11 @@ class Editor(auth.UserAuth):
                 if row["start"] is not None and row["end"] is not None:
                     if float(row["start"]) == -2.0 and float(row["end"]) == -2.0: # Task text
                         LOG.info("Returning task text data")
-                        return {"mime": "text/html", "filename": row["audiofile"], "savename" : "{}.html".format(projectname), "delete" : "N"}
+                        return {"mime": "text/html", "filename": row["audiofile"], "savename" : "{}.html".format(self._unicode_to_ascii(projectname)), "delete" : "N"}
                     elif float(row["start"]) == -1.0 and float(row["end"]) == -1.0: # Masterfile MS-WORD document
                         LOG.info("Returning MS-WORD document")
                         return {"mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                "filename": row["audiofile"], "savename" : "{}.docx".format(projectname), "delete" : "Y"}
+                                "filename": row["audiofile"], "savename" : "{}.docx".format(self._unicode_to_ascii(projectname)), "delete" : "Y"}
                     else:# Normal audio
                         LOG.info("Returning ranged audio")
                         return {"mime": "audio/ogg", "filename": row["audiofile"], "range" : (float(row["start"]), float(row["end"]))}
@@ -485,6 +485,11 @@ class Editor(auth.UserAuth):
                     return {"mime": "audio/ogg", "filename": row["audiofile"]}
         except Exception as e:
             LOG.error("Requested outgoing resource failed: {}".format(e))
+
+    def _unicode_to_ascii(self, text):
+        """ Remove non-ascii characters
+        """
+        return unicodedata.normalize("NFKD", text).encode("ascii", "ignore")
 
     def incoming(self, uri, data):
         """ Processing incoming data and save to task
