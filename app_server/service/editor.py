@@ -465,19 +465,23 @@ class Editor(auth.UserAuth):
                 #URL exists?
                 if not row:
                     raise MethodNotAllowedError(uri)
-                LOG.info("Returning audio for project ID: {}".format(row["projectid"]))
+                LOG.info("Returning data for project ID: {}".format(row["projectid"]))
                 projectname = db.get_project(row["projectid"], fields=["projectname"])["projectname"]
 
                 # Check if audio range is available
                 if row["start"] is not None and row["end"] is not None:
                     if float(row["start"]) == -2.0 and float(row["end"]) == -2.0: # Task text
+                        LOG.info("Returning task text data")
                         return {"mime": "text/html", "filename": row["audiofile"], "savename" : "{}.html".format(projectname), "delete" : "N"}
                     elif float(row["start"]) == -1.0 and float(row["end"]) == -1.0: # Masterfile MS-WORD document
+                        LOG.info("Returning MS-WORD document")
                         return {"mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                                 "filename": row["audiofile"], "savename" : "{}.docx".format(projectname), "delete" : "Y"}
                     else:# Normal audio
+                        LOG.info("Returning ranged audio")
                         return {"mime": "audio/ogg", "filename": row["audiofile"], "range" : (float(row["start"]), float(row["end"]))}
                 else: # Full audio return
+                    LOG.info("Returning full audio")
                     return {"mime": "audio/ogg", "filename": row["audiofile"]}
         except Exception as e:
             LOG.error("Requested outgoing resource failed: {}".format(e))
@@ -526,14 +530,14 @@ class Editor(auth.UserAuth):
 
             self._test_read(textfile)
 
-            if "errstatus" in data:
-                if len(data["errstatus"]) != 0:
-                    self._append_to_textfile(projectid, taskid, textfile, "ERROR: Speech job fail! {}".format(data["errstatus"]))
+            if "ERROR" in data:
+                if len(data["ERROR"]) != 0:
+                    #self._append_to_textfile(projectid, taskid, year, textfile, "ERROR: Speech job fail! {}".format(data["ERROR"]))
                     raise Exception("Speech job failed: (Project ID: {}, Task ID: {})".format(projectid, taskid))
 
             if "CTM" not in data:
-                self._append_to_textfile(projectid, taskid, textfile, "ERROR: Speech job fail! NO CTM from output!!")
-                raise Exception("No CTM found in data: (Project ID: {}, Task ID: {})".format(projectid, taskid))
+                #self._append_to_textfile(projectid, taskid, year, textfile, "ERROR: Speech job fail! NO CTM from output!!")
+                raise Exception("Speech service failed, please try manual method: (Project ID: {}, Task ID: {})".format(projectid, taskid))
 
             with self.db as db:
                 repo.check(os.path.dirname(textfile))
@@ -548,11 +552,11 @@ class Editor(auth.UserAuth):
         except Exception as e:
             LOG.error("Speech processing failure: {}".format(e))
             with self.db as db:
-                if "errstatus" in data:
-                    if  len(data["errstatus"]) != 0:
-                        LOG.error("Speech processing failure: {}".format(data["errstatus"]))
-                        db.set_errstatus(projectid, taskid, year, data["errstatus"])
-                    elif data["errstatus"] is None:
+                if "ERROR" in data:
+                    if  len(data["ERROR"]) != 0:
+                        LOG.error("Speech processing failure: {}".format(data["ERROR"]))
+                        db.set_errstatus(projectid, taskid, year, data["ERROR"])
+                    elif data["ERROR"] is None:
                         db.set_errstatus(projectid, taskid, year, "Requested Speech Service Error!")
                     else:
                         db.set_errstatus(projectid, taskid, year, "{}".format(e))
@@ -560,7 +564,7 @@ class Editor(auth.UserAuth):
                     db.set_errstatus(projectid, taskid, year, "{}".format(e))
                 db.set_jobid(projectid, taskid, year, None)
 
-    def _append_to_textfile(self, projectid, taskid, textfile, text):
+    def _append_to_textfile(self, projectid, taskid, year, textfile, text):
         """
             Append error message textfile
             so user knowns what is going on
@@ -766,7 +770,7 @@ class EditorDB(sqlite.Connection):
         if row["jobid"]: #project clean?
             raise ConflictError("This project is currently locked with jobid: {}".format(row["jobid"]))
         if check_err and row["errstatus"]:
-            raise PrevJobError("{}".format(row["errstatus"]))
+            raise PrevJobError("Project has an error: {}".format(row["errstatus"]))
 
         row_t = self.execute("SELECT jobid, errstatus FROM T{} WHERE taskid=? AND projectid=?".format(row["year"]), (taskid, projectid,)).fetchone()
         if row_t is None: #task exists?
@@ -776,7 +780,7 @@ class EditorDB(sqlite.Connection):
             if row_t["jobid"]: #task clean?
                 raise ConflictError("This task is currently locked with jobid: {}".format(row_t["jobid"]))
         if check_err and row_t["errstatus"]:
-            raise PrevJobError("{}".format(row_t["errstatus"]))
+            raise PrevJobError("Task has an error: {}".format(row_t["errstatus"]))
 
     def get_project(self, projectid, fields):
         """Should typically run `check_project` before doing this.
