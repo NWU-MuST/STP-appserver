@@ -4,7 +4,7 @@
   "toklife": 31536000,
   "categories": ["National Assembly", "National Council of Provinces", "Committees", "General"],
   "languages" : ["English", "Afrikaans", "isiZulu", "Setswana"],
-  "speechservices": {"diarize": {"url" : "jobs/addjob", "name" : "diarize_long", "chunksize" : "600", "subsystem" : "default"}},
+  "speechservices": {"diarize": {"url" : "jobs/addjob", "name" : "diarize", "segmentno" : "10", "subsystem" : "default"}},
   "role" : "project",
   "gmail_user" : "stp.sudoer@gmail.com",
   "gmail_password" : "zTSvdBJW2Y3K_6ZV",

@@ -478,15 +478,25 @@ class Projects(auth.UserAuth):
         #Make job request:
         try:
             # TEMPORARILY COMMENTED OUT FOR TESTING WITHOUT SPEECHSERVER:
-            if "chunksize" in request:
-                chunksize = request["chunksize"]
+            #if "chunksize" in request:
+            #    chunksize = request["chunksize"]
+            #else:
+            #    chunksize = self._config["speechservices"]["diarize"]["chunksize"]
+            #jobreq = {"token" : self._speech.token(), "getaudio": os.path.join(APPSERVER, "projects", outurl),
+            #          "putresult": os.path.join(APPSERVER, "projects", inurl),
+            #          "service" : self._config["speechservices"]["diarize"]["name"],
+            #          "subsystem" : self._config["speechservices"]["diarize"]["subsystem"],
+            #          "chunksize" : chunksize}
+            if "segmentno" in request:
+                segmentno = request["segmentno"]
             else:
-                chunksize = self._config["speechservices"]["diarize"]["chunksize"]
+                segmentno = self._config["speechservices"]["diarize"]["segmentno"]
             jobreq = {"token" : self._speech.token(), "getaudio": os.path.join(APPSERVER, "projects", outurl),
                       "putresult": os.path.join(APPSERVER, "projects", inurl),
                       "service" : self._config["speechservices"]["diarize"]["name"],
                       "subsystem" : self._config["speechservices"]["diarize"]["subsystem"],
-                      "chunksize" : chunksize}
+                      "segmentno" : segmentno}
+
             LOG.debug("posting job")
             reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]["diarize"]["url"]), data=json.dumps(jobreq))
             reqstatus = reqstatus.json()
@@ -558,8 +568,10 @@ class Projects(auth.UserAuth):
                 segments = diarize_parse_ctm(data["CTM"])
                 LOG.debug("(projectid={} jobid={}) CTM parsing successful...".format(projectid, row["jobid"]))
                 tasks = []
-                for taskid, (speaker, starttime, endtime) in enumerate(segments):
-                    tasks.append({"taskid": taskid, "projectid": projectid, "start": starttime, "end": endtime, "speaker" : speaker})
+                #for taskid, (speaker, starttime, endtime) in enumerate(segments):
+                #    tasks.append({"taskid": taskid, "projectid": projectid, "start": starttime, "end": endtime, "speaker" : speaker})
+                for taskid, (speaker, channel, starttime, endtime, tag) in enumerate(segments):
+                    tasks.append({"taskid": taskid, "projectid": projectid, "start": starttime, "end": endtime})
                 #Delete current list of tasks and re-insert from diarize result
                 db.delete_tasks(projectid)
                 db.insert_tasks(projectid, tasks, fields=["taskid", "projectid", "start", "end", "speaker"])

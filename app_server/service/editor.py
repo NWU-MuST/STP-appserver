@@ -16,6 +16,7 @@ import tempfile
 import subprocess
 from functools import wraps
 from types import FunctionType
+import unicodedata
 
 try:
     from sqlite3 import dbapi2 as sqlite
