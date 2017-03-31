@@ -226,8 +226,10 @@ class Projects(auth.UserAuth):
         #Check received tasks are: contiguous, non-overlapping,
         #completely spanning audiofile (implicitly: audio uploaded)
         tasks.sort(key=lambda x:x["start"])
-        prevtask_end = 0.0
+        prevtask_end = None
         for taskid, task in enumerate(tasks):
+            if prevtask_end is None:
+                prevtask_end = 0.0
             if not approx_eq(prevtask_end, task["start"]):
                 raise BadRequestError("Tasks times not contiguous and non-overlapping")
             prevtask_end = task["end"]
@@ -243,8 +245,9 @@ class Projects(auth.UserAuth):
             if row["audiodur"] is None:
                 raise ConflictError("No audio has been uploaded")
             #Check tasks span audio
-            if not approx_eq(row["audiodur"], prevtask_end):
-                raise BadRequestError("Tasks do not span entire audio file")
+            if prevtask_end is not None:
+                if not approx_eq(row["audiodur"], prevtask_end):
+                    raise BadRequestError("Tasks do not span entire audio file")
             #Check whether tasks already assigned
             if db.project_assigned(request["projectid"]):
                 raise ConflictError("Cannot be re-saved because tasks are already assigned (use: update_project())")
