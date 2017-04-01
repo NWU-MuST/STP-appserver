@@ -793,8 +793,15 @@ def approx_eq(a, b, epsilon=0.01):
     return abs(a - b) < epsilon
 
 def diarize_parse_ctm(ctm):
-    segments = [line.split() for line in ctm.splitlines()]
-    segments.sort(key=lambda x:float(x[1])) #by starttime
+    #segments = [line.split() for line in ctm.splitlines()]
+    #segments.sort(key=lambda x:float(x[1])) #by starttime
+    #return segments
+    segments = []
+    for line in ctm.splitlines():
+        (spk, ch, start, end, tag) = line.split()
+        if tag == "<NON-SILENCE>":
+            segments.append([spk, ch, start, str(float(start) + float(end)), tag])
+    segments.sort(key=lambda x:float(x[2])) #by starttime
     return segments
 
 class PrevJobError(Exception):
