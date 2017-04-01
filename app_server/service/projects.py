@@ -577,7 +577,8 @@ class Projects(auth.UserAuth):
                     tasks.append({"taskid": taskid, "projectid": projectid, "start": starttime, "end": endtime})
                 #Delete current list of tasks and re-insert from diarize result
                 db.delete_tasks(projectid)
-                db.insert_tasks(projectid, tasks, fields=["taskid", "projectid", "start", "end", "speaker"])
+                #db.insert_tasks(projectid, tasks, fields=["taskid", "projectid", "start", "end", "speaker"])
+                db.insert_tasks(projectid, tasks, fields=["taskid", "projectid", "start", "end"])
                 db.unlock_project(projectid)
             LOG.info("OK: (projectid={}) Diarization result received successfully".format(projectid))
         except Exception as e: #"unlock" and recover error status
