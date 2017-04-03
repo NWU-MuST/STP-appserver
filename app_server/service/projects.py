@@ -430,6 +430,15 @@ class Projects(auth.UserAuth):
             with open(audiofile, 'wb') as f:
                 f.write(request['file'])
             audiodur = float(subprocess.check_output([SOXI_BIN, "-D", audiofile]))
+            #Check channel number
+            channels = int(subprocess.check_output([SOXI_BIN, "-c", audiofile]))
+            if channels != 1:
+                raise BadRequestError("Only single channel audio supported! Split channels into separate files.")
+            #Check encoding and file type
+            audtype = str(subprocess.check_output([SOXI_BIN, "-t", audiofile])).upper()
+            encoding = str(subprocess.check_output([SOXI_BIN, "-e", audiofile])).upper()
+            if "VORBIS" not in audtype and "VORBIS" not in encoding:
+                raise BadRequestError("Only OGG Vorbis audio supported! Re-encode audio file.")
 
             #Update fields and unlock project            
             with self.db as db:
