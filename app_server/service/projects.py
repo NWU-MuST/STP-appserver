@@ -403,6 +403,7 @@ class Projects(auth.UserAuth):
         """Audio uploaded to project space
            TODO: convert audio to OGG Vorbis, mp3splt for editor
         """
+        audiofile = None
         with self.db as db:
             #This will lock the DB:
             db.check_project(request["projectid"], check_err=False) #DEMIT: check_err?
@@ -454,7 +455,9 @@ class Projects(auth.UserAuth):
             LOG.error(str(e))
             #Unlock the project and set errstatus
             with self.db as db:
-                db.unlock_project(request["projectid"], errstatus="upload_audio")
+                db.unlock_project(request["projectid"], errstatus="upload audio error")
+            if audiofile is not None:
+                os.remove(audiofile)
             raise RuntimeError(str(e))
 
     @authlog("Returning audio for project")
