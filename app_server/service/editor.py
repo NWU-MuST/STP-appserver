@@ -528,7 +528,8 @@ class Editor(auth.UserAuth):
                     raise ConflictError("(projectid={}) Project no longer exists".format(projectid))
                 jobid = db.get_task_field(projectid, taskid, year, fields=["jobid"])["jobid"]
                 if not jobid:
-                    raise ConflictError("No job expected (Project ID: {}, Task ID: {})".format(projectid, taskid))
+                    LOG.warning("No job expected (Project ID: {}, Task ID: {})".format(projectid, taskid))
+                    #raise ConflictError("No job expected (Project ID: {}, Task ID: {})".format(projectid, taskid))
 
                 textfile = db.get_task_field(projectid, taskid, year, fields=["textfile"])["textfile"]
                 if textfile is None:

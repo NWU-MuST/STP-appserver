@@ -566,7 +566,9 @@ class Projects(auth.UserAuth):
                 if not row:
                     raise ConflictError("(projectid={}) Project no longer exists".format(projectid))
                 elif row["jobid"] is None:
-                    raise ConflictError("(projectid={}) Project no longer expecting job (project unlocked in the meantime)".format(projectid))
+                    LOG.warning("(projectid={}) Project no longer expecting job (project unlocked in the meantime)".format(projectid))
+                    #raise ConflictError("(projectid={}) Project no longer expecting job (project unlocked in the meantime)".format(projectid))
+
                 #Parse CTM file and create tasks
                 segments = diarize_parse_ctm(data["CTM"])
                 LOG.debug("(projectid={} jobid={}) CTM parsing successful...".format(projectid, row["jobid"]))
