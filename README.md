@@ -65,20 +65,15 @@ sudo mkdir /home/docker
 
 Restart the docker service:
 ```
-sudo docker start
+sudo service docker start
 ```
-
-### Build docker image
-
-Build the application server Docker image.
-For more instructions see `./install/README.md`
-A developmental version is also avaliable: see `./install/README.dev.md`
 
 ### Create databases
 
 Use the database creation tools in `./app_server/tools/` to create the various databases.  
 
-Setup authentication databases using `./app_server/tools/authdb.py`
+Setup authentication databases using `./app_server/tools/authdb.py`.
+We assume that the user is creating these databases in `~/stp`.
 
 ```
 $ mkdir ~/stp
@@ -89,8 +84,14 @@ Setup project databases using `./app_server/tools/projectdb.py`
 
 ```
 $ mkdir -p ~/stp/
-$ ./app_server/tools/authdb.py ~/stp/projects.db
+$ ./app_server/tools/projectsdb.py ~/stp/projects.db
 ```
+
+### Build docker image
+
+Build the application server Docker image.
+For more instructions see `./install/README.md`
+A developmental version is also avaliable: see `./install/README.dev.md`
 
 ## TESTING
 

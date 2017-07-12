@@ -27,11 +27,11 @@ def new_db(dbfn):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("outfn", metavar="OUTFN", type=str, help="Output DB filename.")
+    parser.add_argument("infn", metavar="INFN", type=str, help="Input DB filename.")
     parser.add_argument("task", metavar="TASK", type=str, help="Task to perform: ADD, DEL, LSUSR, RMTOK")
     args = parser.parse_args()
 
-    db_conn = new_db(args.outfn)
+    db_conn = new_db(args.infn)
     db_curs = db_conn.cursor()
 
     if args.task.upper() == "ADD":

@@ -20,6 +20,23 @@ Create an initial project table used to store project details:
 ./projectdb.py /path/to/database/project.db
 ```
 
+## user_manage.py
+
+Command line tool to add a user, delete a user, list the users and remove a login token for a user.
+
+Usage:
+
+```bash
+$ ./user_manage.py INDB (ADD|DEL|LSUSR|RMTOK)
+```
+
+```
+ADD - Add a new user
+DEL - delete an existing user
+LSUSR - list all registered users
+RMTOK - remove a stale login token for a specific user
+```
+
 ## project_tester:
 
 Run project_tester.py to test project functionality of application server.  
