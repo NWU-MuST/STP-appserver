@@ -44,7 +44,7 @@ Set up two new authentication databases, for the main (projects, editor) and adm
 
 ```bash
 python stp/app_server/tools/authdb.py ~/stp/auth.db
-python stp/app_server/tools/authdb.py --rootpass <rootpass> ~/stp/admin.db <rootpass>
+python stp/app_server/tools/authdb.py --rootpass <rootpass> ~/stp/admin.db
 ```
 
 ### Install speech server
