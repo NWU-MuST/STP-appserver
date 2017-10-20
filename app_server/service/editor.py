@@ -639,7 +639,7 @@ class Editor(auth.UserAuth):
                 jobreq = {"token" : self._speech.token(), "jobid" : task["jobid"]}
                 LOG.debug(os.path.join(SPEECHSERVER, self._config["speechservices"]["API"]["delete"]))
                 LOG.debug("{}".format(jobreq))
-                reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]["delete"]), data=json.dumps(jobreq))
+                reqstatus = requests.post(os.path.join(SPEECHSERVER, self._config["speechservices"]["API"]["delete"]), data=json.dumps(jobreq))
                 reqstatus = reqstatus.json()
 
                 db.set_jobid(request["projectid"], request["taskid"], project["year"], None)
